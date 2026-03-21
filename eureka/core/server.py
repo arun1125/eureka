@@ -40,22 +40,19 @@ def create_app(brain_dir: str) -> dict:
             elif path == "/api/graph":
                 conn = open_db(brain_dir)
                 try:
-                    # Build adjacency for simple community detection
+                    # Only atoms in the graph — molecules live in their own tab
                     all_slugs = []
                     slug_type = {}
-                    slug_method = {}
                     for row in conn.execute("SELECT slug FROM atoms"):
                         all_slugs.append(row["slug"])
                         slug_type[row["slug"]] = "atom"
-                    for row in conn.execute("SELECT slug, method FROM molecules"):
-                        all_slugs.append(row["slug"])
-                        slug_type[row["slug"]] = "molecule"
-                        slug_method[row["slug"]] = row["method"]
+                    atom_set = set(all_slugs)
 
-                    # Collect edges
+                    # Collect edges (only between atoms)
                     edge_list = []
                     for row in conn.execute("SELECT source, target, similarity FROM edges"):
-                        edge_list.append({"source": row["source"], "target": row["target"], "similarity": row["similarity"]})
+                        if row["source"] in atom_set and row["target"] in atom_set:
+                            edge_list.append({"source": row["source"], "target": row["target"], "similarity": row["similarity"]})
 
                     # Community by primary tag (first tag on each atom)
                     community = {}
@@ -90,8 +87,6 @@ def create_app(brain_dir: str) -> dict:
                             "type": slug_type.get(slug, "atom"),
                             "community": community.get(slug, 0),
                         }
-                        if slug in slug_method:
-                            node["method"] = slug_method[slug]
                         nodes.append(node)
 
                     self._json_response({"nodes": nodes, "edges": edge_list})

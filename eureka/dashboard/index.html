@@ -209,16 +209,22 @@ async function initGraph() {
   const width = container.clientWidth, height = container.clientHeight;
   const svg = d3.select('#graph-container svg').attr('viewBox', [0, 0, width, height]);
 
+  // Zoom + pan
+  const g = svg.append('g');
+  svg.call(d3.zoom()
+    .scaleExtent([0.1, 5])
+    .on('zoom', (e) => g.attr('transform', e.transform)));
+
   const simulation = d3.forceSimulation(data.nodes)
     .force('link', d3.forceLink(data.edges).id(d => d.slug).distance(80))
     .force('charge', d3.forceManyBody().strength(-120))
     .force('center', d3.forceCenter(width/2, height/2))
     .force('collision', d3.forceCollide(20));
 
-  const link = svg.append('g').selectAll('line').data(data.edges).join('line')
+  const link = g.append('g').selectAll('line').data(data.edges).join('line')
     .attr('stroke', '#1f1f1f').attr('stroke-width', 1);
 
-  const node = svg.append('g').selectAll('g').data(data.nodes).join('g')
+  const node = g.append('g').selectAll('g').data(data.nodes).join('g')
     .call(d3.drag().on('start', dragstarted).on('drag', dragged).on('end', dragended));
 
   // Draw shapes based on type
