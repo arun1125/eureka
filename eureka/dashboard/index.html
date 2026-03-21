@@ -125,7 +125,8 @@ body { background: #0a0a0a; color: #e5e5e5; font-family: 'Inter', -apple-system,
 
 <!-- Search Tab -->
 <div class="tab-content" id="tab-search">
-  <input type="text" class="search-input" id="search-input" placeholder="Search atoms and molecules..." autofocus>
+  <input type="text" class="search-input" id="search-input" placeholder="Search atoms by title, body, or tag..." autofocus>
+  <div class="filters" id="tag-filters" style="margin-bottom:12px;"></div>
   <div id="search-results"></div>
 </div>
 
@@ -228,9 +229,11 @@ async function initGraph() {
     }
   });
 
-  // Labels
-  node.append('text').text(d => d.slug.slice(0, 25) + (d.slug.length > 25 ? '...' : ''))
-    .attr('class', 'node-label').attr('dx', 12).attr('dy', 4);
+  // Labels — use title, cap at 40 chars
+  node.append('text').text(d => {
+    const t = d.title || d.slug.replace(/-/g, ' ');
+    return t.length > 40 ? t.slice(0, 40) + '...' : t;
+  }).attr('class', 'node-label').attr('dx', 12).attr('dy', 4);
 
   // Hover highlight
   node.on('mouseover', function(e, d) {
@@ -267,22 +270,53 @@ initGraph();
 
 // Search
 let searchTimeout;
+let activeTag = '';
 document.getElementById('search-input').addEventListener('input', e => {
   clearTimeout(searchTimeout);
+  activeTag = '';
+  document.querySelectorAll('#tag-filters .filter-btn').forEach(b => b.classList.remove('active'));
+  const allBtn = document.querySelector('#tag-filters .filter-btn[data-tag=""]');
+  if (allBtn) allBtn.classList.add('active');
   searchTimeout = setTimeout(() => doSearch(e.target.value), 300);
 });
 
-async function doSearch(q) {
-  if (!q.trim()) { document.getElementById('search-results').innerHTML = ''; return; }
-  const data = await fetch('/api/search?q=' + encodeURIComponent(q)).then(r => r.json());
+async function doSearch(q, tag) {
+  let url = '/api/search?';
+  if (tag) url += 'tag=' + encodeURIComponent(tag);
+  else if (q && q.trim()) url += 'q=' + encodeURIComponent(q);
+
+  const data = await fetch(url).then(r => r.json());
+
+  // Render tag filters (once)
+  if (data.tags && document.getElementById('tag-filters').children.length === 0) {
+    document.getElementById('tag-filters').innerHTML =
+      '<div class="filter-btn active" data-tag="">All</div>' +
+      (data.tags||[]).map(t => `<div class="filter-btn" data-tag="${esc(t)}">${esc(t)}</div>`).join('');
+    document.querySelectorAll('#tag-filters .filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#tag-filters .filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        activeTag = btn.dataset.tag;
+        document.getElementById('search-input').value = '';
+        doSearch('', activeTag);
+      });
+    });
+  }
+
   document.getElementById('search-results').innerHTML = (data.results||[]).map(r => `
-    <div class="card">
-      <h3>${esc(r.slug.replace(/-/g, ' '))}</h3>
-      <p>${r.body ? esc(r.body.slice(0, 200)) + '...' : ''}</p>
-      ${r.tags ? '<div class="meta">' + r.tags.split(',').map(t => '<span class="atom-pill">'+esc(t.trim())+'</span>').join('') + '</div>' : ''}
+    <div class="card" style="cursor:pointer" data-slug="${esc(r.slug)}">
+      <h3>${esc(r.title || r.slug.replace(/-/g, ' '))}</h3>
+      <p>${esc(r.snippet || '')}${(r.snippet||'').length >= 200 ? '...' : ''}</p>
     </div>
   `).join('') || '<p style="color:#737373">No results</p>';
+
+  // Click to open detail
+  document.querySelectorAll('#search-results .card').forEach(card => {
+    card.addEventListener('click', () => openDetail(card.dataset.slug));
+  });
 }
+// Load all atoms + tags on first visit
+doSearch('');
 
 // Molecules
 async function loadMolecules() {
@@ -309,7 +343,7 @@ async function loadMolecules() {
 function renderMolecules(mols, method) {
   const filtered = method === 'all' ? mols : mols.filter(m => m.method === method);
   document.getElementById('mol-grid').innerHTML = filtered.sort((a,b) => b.score-a.score).map(m => `
-    <div class="card">
+    <div class="card" style="cursor:pointer" data-mol-slug="${esc(m.slug)}">
       <div style="display:flex;justify-content:space-between;align-items:start;">
         <h3 style="flex:1;">${esc(m.slug.replace(/-/g, ' '))}</h3>
         <div><span class="score">${Math.round(m.score)}</span></div>
@@ -319,8 +353,19 @@ function renderMolecules(mols, method) {
         <span class="badge badge-${m.method === 'v-structure' ? 'v-structure' : m.method === 'triangle' ? 'triangle' : 'other'}">${esc(m.method)}</span>
         <span>${esc(m.review_status)}</span>
       </div>
+      <div class="mol-body" style="display:none; margin-top:12px; padding-top:12px; border-top:1px solid #1f1f1f;">
+        <p style="white-space:pre-wrap; line-height:1.6;">${esc(m.body || '')}</p>
+      </div>
     </div>
   `).join('') || '<p style="color:#737373">No molecules yet</p>';
+
+  // Toggle body on click
+  document.querySelectorAll('#mol-grid .card').forEach(card => {
+    card.addEventListener('click', () => {
+      const body = card.querySelector('.mol-body');
+      body.style.display = body.style.display === 'none' ? 'block' : 'none';
+    });
+  });
 }
 
 // Review
@@ -340,8 +385,9 @@ async function loadReview() {
         <span>Score: ${Math.round(m.score)}</span>
       </div>
       <div class="review-actions">
-        <button class="btn btn-accept" data-action="yes" data-slug="${safeSlug}">Yes (y)</button>
-        <button class="btn btn-reject" data-action="no" data-slug="${safeSlug}">No (n)</button>
+        <button class="btn" style="color:#737373;border-color:#737373;" data-action="skip" data-slug="${safeSlug}">I already know this (s)</button>
+        <button class="btn btn-accept" data-action="yes" data-slug="${safeSlug}">New &amp; interesting (y)</button>
+        <button class="btn btn-reject" data-action="no" data-slug="${safeSlug}">Doesn't excite me (n)</button>
       </div>
     </div>`;
   }).join('') || '<p style="color:#737373">Nothing to review</p>';
@@ -361,6 +407,7 @@ document.addEventListener('keydown', e => {
     if (!slug) return;
     if (e.key === 'y') reviewMolecule(slug, 'yes');
     if (e.key === 'n') reviewMolecule(slug, 'no');
+    if (e.key === 's') reviewMolecule(slug, 'skip');
     if (e.key === 'ArrowDown') { currentReviewIndex = Math.min(currentReviewIndex+1, cards.length-1); cards[currentReviewIndex].scrollIntoView({behavior:'smooth'}); }
     if (e.key === 'ArrowUp') { currentReviewIndex = Math.max(currentReviewIndex-1, 0); cards[currentReviewIndex].scrollIntoView({behavior:'smooth'}); }
   }

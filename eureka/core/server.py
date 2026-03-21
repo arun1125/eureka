@@ -52,38 +52,41 @@ def create_app(brain_dir: str) -> dict:
                         slug_type[row["slug"]] = "molecule"
                         slug_method[row["slug"]] = row["method"]
 
-                    # Simple community: assign by connected component
-                    adj = {s: set() for s in all_slugs}
+                    # Collect edges
                     edge_list = []
                     for row in conn.execute("SELECT source, target, similarity FROM edges"):
-                        s, t = row["source"], row["target"]
-                        if s in adj and t in adj:
-                            adj[s].add(t)
-                            adj[t].add(s)
-                        edge_list.append({"source": s, "target": t, "similarity": row["similarity"]})
+                        edge_list.append({"source": row["source"], "target": row["target"], "similarity": row["similarity"]})
 
+                    # Community by primary tag (first tag on each atom)
                     community = {}
-                    c = 0
-                    visited = set()
-                    for node in all_slugs:
-                        if node in visited:
-                            continue
-                        queue = [node]
-                        while queue:
-                            n = queue.pop()
-                            if n in visited:
-                                continue
-                            visited.add(n)
-                            community[n] = c
-                            for nb in adj.get(n, set()):
-                                if nb not in visited:
-                                    queue.append(nb)
-                        c += 1
+                    tag_to_id = {}
+                    tag_counter = 0
+                    for slug in all_slugs:
+                        row = conn.execute(
+                            "SELECT t.name FROM tags t JOIN note_tags nt ON t.id = nt.tag_id "
+                            "WHERE nt.slug = ? ORDER BY t.name LIMIT 1", (slug,)
+                        ).fetchone()
+                        if row:
+                            tag_name = row["name"]
+                            if tag_name not in tag_to_id:
+                                tag_to_id[tag_name] = tag_counter
+                                tag_counter += 1
+                            community[slug] = tag_to_id[tag_name]
+                        else:
+                            community[slug] = 0
+
+                    # Load titles for display
+                    slug_title = {}
+                    for row in conn.execute("SELECT slug, title FROM atoms"):
+                        slug_title[row["slug"]] = row["title"]
+                    for row in conn.execute("SELECT slug, title FROM molecules"):
+                        slug_title[row["slug"]] = row["title"]
 
                     nodes = []
                     for slug in all_slugs:
                         node = {
                             "slug": slug,
+                            "title": slug_title.get(slug, slug.replace("-", " ")),
                             "type": slug_type.get(slug, "atom"),
                             "community": community.get(slug, 0),
                         }
@@ -98,20 +101,66 @@ def create_app(brain_dir: str) -> dict:
             elif path == "/api/search":
                 qs = parse_qs(parsed.query)
                 q = qs.get("q", [""])[0]
+                tag = qs.get("tag", [""])[0]
+                source_id = qs.get("source", [""])[0]
                 conn = open_db(brain_dir)
                 try:
                     results = []
-                    if q:
+                    if tag:
+                        # Filter by tag
                         rows = conn.execute(
-                            "SELECT slug, snippet(notes_fts) as snippet FROM notes_fts WHERE body MATCH ?",
-                            (q,),
+                            "SELECT a.slug, a.title, a.body FROM atoms a "
+                            "JOIN note_tags nt ON a.slug = nt.slug "
+                            "JOIN tags t ON nt.tag_id = t.id "
+                            "WHERE t.name = ? ORDER BY a.title",
+                            (tag,),
                         ).fetchall()
                         for row in rows:
                             results.append({
                                 "slug": row["slug"],
-                                "snippet": row["snippet"],
+                                "title": row["title"],
+                                "snippet": (row["body"] or "")[:200],
                             })
-                    self._json_response({"results": results})
+                    elif q:
+                        # Search by title LIKE (more reliable than FTS for short queries)
+                        rows = conn.execute(
+                            "SELECT slug, title, body FROM atoms "
+                            "WHERE title LIKE ? OR body LIKE ? OR slug LIKE ? "
+                            "ORDER BY title LIMIT 50",
+                            (f"%{q}%", f"%{q}%", f"%{q}%"),
+                        ).fetchall()
+                        for row in rows:
+                            results.append({
+                                "slug": row["slug"],
+                                "title": row["title"],
+                                "snippet": (row["body"] or "")[:200],
+                            })
+                    else:
+                        # No filter — return all atoms
+                        rows = conn.execute(
+                            "SELECT slug, title, body FROM atoms ORDER BY title LIMIT 100"
+                        ).fetchall()
+                        for row in rows:
+                            results.append({
+                                "slug": row["slug"],
+                                "title": row["title"],
+                                "snippet": (row["body"] or "")[:200],
+                            })
+
+                    # Get all tags and sources for filter UI
+                    all_tags = [r["name"] for r in conn.execute(
+                        "SELECT DISTINCT t.name FROM tags t "
+                        "JOIN note_tags nt ON t.id = nt.tag_id ORDER BY t.name"
+                    ).fetchall()]
+                    all_sources = [{"id": r["id"], "title": r["title"]} for r in conn.execute(
+                        "SELECT id, title FROM sources ORDER BY title"
+                    ).fetchall()]
+
+                    self._json_response({
+                        "results": results,
+                        "tags": all_tags,
+                        "sources": all_sources,
+                    })
                 finally:
                     conn.close()
 
@@ -232,6 +281,20 @@ def create_app(brain_dir: str) -> dict:
                     elif decision == "no":
                         reject_molecule(conn, slug, brain_dir)
                         self._json_response({"ok": True, "decision": "rejected"})
+                    elif decision == "skip":
+                        # "I already know this" — accept but mark as known
+                        from datetime import datetime
+                        now = datetime.now().isoformat()
+                        conn.execute(
+                            "UPDATE molecules SET review_status = 'known', reviewed_at = ? WHERE slug = ?",
+                            (now, slug),
+                        )
+                        conn.execute(
+                            "INSERT INTO reviews (slug, decision, reviewed_at) VALUES (?, 'known', ?)",
+                            (slug, now),
+                        )
+                        conn.commit()
+                        self._json_response({"ok": True, "decision": "known"})
                     else:
                         self._json_response({"error": "invalid decision"}, 400)
                 finally:
