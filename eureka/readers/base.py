@@ -5,6 +5,8 @@ from pathlib import Path
 from eureka.readers.text import TextReader
 from eureka.readers.url import URLReader
 from eureka.readers.youtube import YouTubeReader
+from eureka.readers.pdf import PDFReader
+from eureka.readers.epub import EPUBReader
 
 
 def detect_reader(source_str: str):
@@ -19,5 +21,9 @@ def detect_reader(source_str: str):
     suffix = Path(source_str).suffix.lower()
     if suffix in (".txt", ".md"):
         return TextReader()
+    if suffix == ".pdf":
+        return PDFReader()
+    if suffix == ".epub":
+        return EPUBReader()
 
     raise ValueError(f"No reader found for: {source_str}")

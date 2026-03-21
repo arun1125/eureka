@@ -12,7 +12,11 @@ from eureka.readers.base import detect_reader
 
 def get_llm(brain_dir: Path):
     """Return an LLM instance for extraction. Monkeypatch this in tests."""
-    return None
+    try:
+        from eureka.core.llm import get_llm as _get_llm
+        return _get_llm()
+    except Exception:
+        return None
 
 
 def run_ingest(source: str, brain_dir_path: str) -> None:
@@ -88,6 +92,23 @@ def run_ingest(source: str, brain_dir_path: str) -> None:
             content = f"# {atom['title']}\n\n{body_with_links}\n\n{tags_line}\n"
             md_path.write_text(content)
             atoms_created += 1
+
+    # Re-index, embed, and link if atoms were created
+    if atoms_created > 0:
+        conn = open_db(brain_dir / "brain.db")
+        try:
+            from eureka.core.index import rebuild_index
+            from eureka.core.embeddings import ensure_embeddings
+            from eureka.core.linker import link_all
+            print(f"Indexing {atoms_created} atoms...", file=sys.stderr, flush=True)
+            rebuild_index(conn, brain_dir)
+            print("Embedding...", file=sys.stderr, flush=True)
+            ensure_embeddings(conn, brain_dir)
+            print("Linking...", file=sys.stderr, flush=True)
+            link_all(conn)
+            print("Done.", file=sys.stderr, flush=True)
+        finally:
+            conn.close()
 
     emit(envelope(True, "ingest", {
         "source": {
