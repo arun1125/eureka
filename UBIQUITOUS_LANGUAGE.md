@@ -76,6 +76,23 @@ Every file, variable, docstring, test, and conversation about Eureka uses these 
 | **note_tags** | Junction table mapping any slug (atom or molecule) to tags. |
 | **notes_fts** | FTS5 virtual table for full-text search across all slugs, bodies, and tags. |
 
+## Thought Partner (v3)
+
+| Term | Definition | Not This |
+|------|-----------|----------|
+| **Dump** | Raw text the user brain-dumps — typed, dictated, voice-transcribed. A source with `type = 'dump'`. The extraction prompt is personal, not academic. | "note", "journal entry", "input" |
+| **Profile** | First-class atoms tagged `profile` representing the user's goals, patterns, values, and struggles. Also stored in the `profile` table as key-value pairs with confidence scores. | "settings", "preferences", "metadata" |
+| **Profile Atom** | An atom extracted from profile answers or inferred from behavior. Tagged `profile`. Participates in linking and discovery like any other atom. | "config", "user setting" |
+| **Pushback** | Structured challenge returned by Eureka when the brain disagrees with a query or dump. Types: contradiction, pattern, gap, drift. Always JSON, never prose. | "criticism", "error", "warning" |
+| **Contradiction** | Two atoms in the same topical neighborhood whose claims point in opposite directions. Detected by high topical similarity + low directional agreement. A generalization of V-structures. | "conflict", "inconsistency" |
+| **Pattern** | A theme the user keeps circling back to — same topic in 3+ dumps over 2+ weeks. Surfaced as pushback. | "trend", "habit", "recurring topic" |
+| **Goal-Reality Gap** | When profile goals don't match recent activity. User says they want X but dumps/ingests are all about Y. | "misalignment", "drift" |
+| **Reflection** | A brain-wide self-assessment: active topics, recurring patterns, blind spots, goal alignment, molecules to revisit. Output of `eureka reflect`. | "summary", "report", "status" |
+| **Blind Spot** | Two topic clusters with high internal connectivity but few cross-links. The gap between them may contain undiscovered insights. | "missing topic", "gap" |
+| **Reframe** | A V-structure near the query, formatted as an alternative perspective. "What if the real question isn't A vs B, but how C makes them both true?" | "suggestion", "tip" |
+| **Action Suggestion** | A concrete next step derived from goals + brain gaps. "Your brain has nothing on X — consider ingesting a source." | "recommendation", "advice" |
+| **Activity Log** | The `activity` table tracking every dump, question, review, and ingest with timestamps. Used for pattern detection, goal-reality gap, and recurring theme analysis. | "history", "audit log" |
+
 ## Conventions
 
 - **Slugs** are always kebab-case, derived from the title.
@@ -83,3 +100,5 @@ Every file, variable, docstring, test, and conversation about Eureka uses these 
 - **Scores** are always 0-100 (percentage of theoretical max).
 - **Tags** are always lowercase.
 - **The tool computes. The agent thinks. The human decides.** — Eureka never makes subjective decisions. It surfaces data; the agent interprets; the human judges.
+- **Pushback is structured, not generated.** Eureka returns evidence and challenge type. The agent decides tone and delivery.
+- **Profile is atoms, not metadata.** Profile entries participate in linking, discovery, and scoring like everything else.

@@ -135,6 +135,44 @@ def create_app(brain_dir: str) -> dict:
                 finally:
                     conn.close()
 
+            elif path == "/api/profile":
+                conn = open_db(brain_dir)
+                try:
+                    rows = conn.execute(
+                        "SELECT key, value, source, confidence FROM profile"
+                    ).fetchall()
+                    entries = [
+                        {"key": r["key"], "value": r["value"], "source": r["source"], "confidence": r["confidence"]}
+                        for r in rows
+                    ]
+                    self._json_response({"entries": entries})
+                finally:
+                    conn.close()
+
+            elif path == "/api/activity":
+                conn = open_db(brain_dir)
+                try:
+                    rows = conn.execute(
+                        "SELECT type, slug, query, timestamp FROM activity "
+                        "ORDER BY timestamp DESC LIMIT 50"
+                    ).fetchall()
+                    activities = [
+                        {"type": r["type"], "slug": r["slug"], "query": r["query"], "timestamp": r["timestamp"]}
+                        for r in rows
+                    ]
+                    self._json_response({"activities": activities})
+                finally:
+                    conn.close()
+
+            elif path == "/api/reflect":
+                from eureka.core.reflect import reflect
+                conn = open_db(brain_dir)
+                try:
+                    result = reflect(conn, brain_dir)
+                    self._json_response(result)
+                finally:
+                    conn.close()
+
             elif path == "" or path == "/":
                 # Serve dashboard
                 dashboard_path = Path(__file__).parent.parent / "dashboard" / "index.html"

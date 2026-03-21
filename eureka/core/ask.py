@@ -3,6 +3,8 @@
 import sqlite3
 
 from eureka.core.embeddings import embed_text, cosine_sim
+from eureka.core.profile import get_relevant_profile
+from eureka.core.pushback import find_contradictions
 
 
 def ask(
@@ -105,9 +107,50 @@ def ask(
                 })
     tensions.sort(key=lambda x: x["tension_score"], reverse=True)
 
+    # --- 5. Profile context ---
+    profile_entries = get_relevant_profile(conn, embeddings, q_vec)
+    profile_context = [{"key": e["key"], "value": e["value"]} for e in profile_entries]
+
+    # --- 6. Reframes from V-structures ---
+    reframes = []
+    for t in tensions:
+        reframes.append({
+            "v_structure": {"a": t["a"], "b": t["b"], "bridge": t["bridge"]},
+            "reframe": f"What if the question isn't {t['a']} vs {t['b']}, but how {t['bridge']} makes both true?",
+        })
+
+    # --- 7. Action suggestions from profile goals ---
+    action_suggestions = []
+    for entry in profile_context:
+        goal_words = {w.lower() for w in entry["value"].split() if len(w) > 2}
+        # Check if any atom titles cover this goal's topic
+        covered = False
+        for slug in embeddings:
+            slug_words = {w.lower() for w in slug.split("-") if len(w) > 2}
+            if len(goal_words & slug_words) >= 2:
+                covered = True
+                break
+        if not covered:
+            action_suggestions.append({
+                "suggestion": f"Your goal '{entry['value']}' has thin coverage in your brain. Consider ingesting a source on this topic.",
+            })
+
+    # --- 8. Pushback — contradictions between query and existing atoms ---
+    pushback = []
+    contradictions = find_contradictions({"query": q_vec}, embeddings, conn)
+    for c in contradictions:
+        pushback.append({
+            "atom": c["existing_atom"],
+            "challenge": f"Your brain contains '{c['existing_atom']}' (similarity {c['similarity']}). Your question may assume otherwise.",
+        })
+
     return {
         "nearest": nearest,
         "graph_neighbors": graph_neighbors,
         "molecules": molecules,
         "tensions": tensions,
+        "profile_context": profile_context,
+        "reframes": reframes,
+        "action_suggestions": action_suggestions,
+        "pushback": pushback,
     }

@@ -97,6 +97,21 @@ def open_db(db_path: Path) -> sqlite3.Connection:
             decision TEXT NOT NULL,
             reviewed_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS profile (
+            key TEXT PRIMARY KEY,
+            value TEXT,
+            source TEXT,
+            confidence REAL,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS activity (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            type TEXT,
+            slug TEXT,
+            query TEXT,
+            timestamp TEXT DEFAULT (datetime('now'))
+        );
         CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts4(slug, body, tags);
     """)
     conn.commit()
@@ -128,7 +143,8 @@ def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
 
 
 _ALLOWED_TABLES = {"atoms", "molecules", "sources", "edges", "tags", "note_tags",
-                    "embeddings", "reviews", "discovery_runs", "molecule_atoms"}
+                    "embeddings", "reviews", "discovery_runs", "molecule_atoms",
+                    "profile", "activity"}
 
 
 def _count(conn: sqlite3.Connection, table: str, column: str = None, value: str = None) -> int:
@@ -154,6 +170,9 @@ def get_stats(conn: sqlite3.Connection) -> dict:
     sources = _count(conn, "sources")
     edges = _count(conn, "edges")
 
+    profile_entries = _count(conn, "profile")
+    activity_count = _count(conn, "activity")
+
     return {
         "atoms": atoms,
         "molecules": {
@@ -164,4 +183,6 @@ def get_stats(conn: sqlite3.Connection) -> dict:
         },
         "sources": sources,
         "edges": edges,
+        "profile_entries": profile_entries,
+        "activity_count": activity_count,
     }

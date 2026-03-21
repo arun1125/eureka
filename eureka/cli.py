@@ -101,6 +101,75 @@ def main():
         result = ask(question, conn, embeddings)
         emit(envelope("ask", result))
         conn.close()
+    elif command == "dump":
+        if len(args) < 2:
+            emit(envelope(False, "dump", {"message": "Usage: eureka dump <text> --brain-dir <dir>"}))
+            sys.exit(1)
+        raw_text = args[1]
+        brain_dir = None
+        if "--brain-dir" in args:
+            idx = args.index("--brain-dir")
+            if idx + 1 < len(args):
+                brain_dir = args[idx + 1]
+        if brain_dir is None:
+            emit(envelope(False, "dump", {"message": "--brain-dir is required"}))
+            sys.exit(1)
+        from eureka.core.db import open_db
+        from eureka.core.dump import process_dump
+        conn = open_db(brain_dir)
+        # LLM is required — use Gemini or pass via env
+        try:
+            from eureka.core.llm import get_llm
+            llm = get_llm()
+        except Exception:
+            emit(envelope(False, "dump", {"message": "No LLM configured. Set EUREKA_LLM or provide llm."}))
+            sys.exit(1)
+        result = process_dump(raw_text, conn, brain_dir, llm)
+        emit(envelope(True, "dump", result))
+        conn.close()
+    elif command == "profile":
+        brain_dir = None
+        if "--brain-dir" in args:
+            idx = args.index("--brain-dir")
+            if idx + 1 < len(args):
+                brain_dir = args[idx + 1]
+        if brain_dir is None:
+            emit(envelope(False, "profile", {"message": "--brain-dir is required"}))
+            sys.exit(1)
+        from eureka.core.profile import get_questions, process_answers, get_profile
+        from eureka.core.db import open_db
+        if "--answers" in args:
+            idx = args.index("--answers")
+            answers_text = args[idx + 1] if idx + 1 < len(args) else ""
+            conn = open_db(brain_dir)
+            try:
+                from eureka.core.llm import get_llm
+                llm = get_llm()
+            except Exception:
+                emit(envelope(False, "profile", {"message": "No LLM configured."}))
+                sys.exit(1)
+            result = process_answers(conn, brain_dir, answers_text, llm)
+            emit(envelope(True, "profile", result))
+            conn.close()
+        else:
+            questions = get_questions()
+            emit(envelope(True, "profile", {"questions": questions}))
+    elif command == "reflect":
+        brain_dir = None
+        if "--brain-dir" in args:
+            idx = args.index("--brain-dir")
+            if idx + 1 < len(args):
+                brain_dir = args[idx + 1]
+        if brain_dir is None:
+            emit(envelope(False, "reflect", {"message": "--brain-dir is required"}))
+            sys.exit(1)
+        from eureka.core.db import open_db
+        from eureka.core.reflect import reflect
+        from pathlib import Path
+        conn = open_db(brain_dir)
+        result = reflect(conn, Path(brain_dir))
+        emit(envelope(True, "reflect", result))
+        conn.close()
     elif command == "status":
         if len(args) < 2:
             emit(envelope(False, "status", {"message": "Usage: eureka status <brain_dir>"}))
