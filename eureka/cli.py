@@ -99,7 +99,7 @@ def main():
             dim = len(r["vector"]) // 4
             embeddings[r["slug"]] = list(struct.unpack(f"{dim}f", r["vector"]))
         result = ask(question, conn, embeddings)
-        emit(envelope("ask", result))
+        emit(envelope(True, "ask", result))
         conn.close()
     elif command == "dump":
         if len(args) < 2:

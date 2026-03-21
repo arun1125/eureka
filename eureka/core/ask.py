@@ -4,7 +4,6 @@ import sqlite3
 
 from eureka.core.embeddings import embed_text, cosine_sim
 from eureka.core.profile import get_relevant_profile
-from eureka.core.pushback import find_contradictions
 
 
 def ask(
@@ -78,27 +77,30 @@ def ask(
                 "score": row["score"],
             })
 
-    # --- 4. V-structures (tensions) ---
+    # --- 4. V-structures (tensions) — top 5 only ---
     tensions = []
     nearest_list = list(nearest_slugs)
     for i in range(len(nearest_list)):
         for j in range(i + 1, len(nearest_list)):
             a, b = nearest_list[i], nearest_list[j]
-            # Check if a and b are dissimilar
             if a in embeddings and b in embeddings:
                 ab_sim = cosine_sim(embeddings[a], embeddings[b])
-                if ab_sim > 0.8:
-                    continue  # too similar, not a tension
-            # Find shared neighbors (bridges)
+                if ab_sim > 0.75:
+                    continue  # too similar, not a real tension
+                if ab_sim > 0.5:
+                    continue  # moderately similar — agreement, not tension
+            else:
+                continue
+            # Find shared neighbors (bridges) — only keep the best bridge per pair
             bridges = conn.execute(
                 "SELECT e1.target AS bridge FROM edges e1 "
                 "JOIN edges e2 ON e1.target = e2.target "
                 "WHERE e1.source = ? AND e2.source = ?",
                 (a, b),
             ).fetchall()
-            for row in bridges:
-                bridge = row["bridge"]
-                tension_score = 1.0 - ab_sim if a in embeddings and b in embeddings else 0.5
+            if bridges:
+                bridge = bridges[0]["bridge"]
+                tension_score = 1.0 - ab_sim
                 tensions.append({
                     "a": a,
                     "b": b,
@@ -106,24 +108,35 @@ def ask(
                     "tension_score": round(tension_score, 4),
                 })
     tensions.sort(key=lambda x: x["tension_score"], reverse=True)
+    tensions = tensions[:5]
 
     # --- 5. Profile context ---
     profile_entries = get_relevant_profile(conn, embeddings, q_vec)
     profile_context = [{"key": e["key"], "value": e["value"]} for e in profile_entries]
 
-    # --- 6. Reframes from V-structures ---
+    # --- 6. Reframes from V-structures (top 3, with titles) ---
+    # Load titles for reframe readability
+    _title_cache = {}
+    def _get_title(slug):
+        if slug not in _title_cache:
+            row = conn.execute("SELECT title FROM atoms WHERE slug = ?", (slug,)).fetchone()
+            _title_cache[slug] = row["title"] if row else slug.replace("-", " ")
+        return _title_cache[slug]
+
     reframes = []
-    for t in tensions:
+    for t in tensions[:3]:
+        a_title = _get_title(t["a"])
+        b_title = _get_title(t["b"])
+        bridge_title = _get_title(t["bridge"])
         reframes.append({
             "v_structure": {"a": t["a"], "b": t["b"], "bridge": t["bridge"]},
-            "reframe": f"What if the question isn't {t['a']} vs {t['b']}, but how {t['bridge']} makes both true?",
+            "reframe": f"What if the question isn't \"{a_title}\" vs \"{b_title}\", but how \"{bridge_title}\" makes both true?",
         })
 
     # --- 7. Action suggestions from profile goals ---
     action_suggestions = []
     for entry in profile_context:
         goal_words = {w.lower() for w in entry["value"].split() if len(w) > 2}
-        # Check if any atom titles cover this goal's topic
         covered = False
         for slug in embeddings:
             slug_words = {w.lower() for w in slug.split("-") if len(w) > 2}
@@ -135,14 +148,14 @@ def ask(
                 "suggestion": f"Your goal '{entry['value']}' has thin coverage in your brain. Consider ingesting a source on this topic.",
             })
 
-    # --- 8. Pushback — contradictions between query and existing atoms ---
+    # --- 8. Pushback ---
+    # Note: pushback on ask is empty for now. Cosine similarity alone can't
+    # distinguish "agrees with query" from "contradicts query" — both land in
+    # the 0.5-0.85 band. Pushback works on dump (where we have extracted atoms
+    # to compare) but not on freeform questions without an LLM to assess
+    # directionality. This will be addressed when we add LLM-assisted
+    # contradiction detection.
     pushback = []
-    contradictions = find_contradictions({"query": q_vec}, embeddings, conn)
-    for c in contradictions:
-        pushback.append({
-            "atom": c["existing_atom"],
-            "challenge": f"Your brain contains '{c['existing_atom']}' (similarity {c['similarity']}). Your question may assume otherwise.",
-        })
 
     return {
         "nearest": nearest,
