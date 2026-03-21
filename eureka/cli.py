@@ -41,7 +41,12 @@ def main():
         if len(args) < 2:
             emit(envelope(False, "discover", {"message": "Usage: eureka discover <brain_dir>"}))
             sys.exit(1)
-        run_discover(args[1])
+        count = 10
+        if "--count" in args:
+            idx = args.index("--count")
+            if idx + 1 < len(args):
+                count = int(args[idx + 1])
+        run_discover(args[1], count=count)
     elif command == "review":
         if len(args) < 3:
             emit(envelope(False, "review", {"message": "Usage: eureka review <slug> <yes|no> [--brain-dir <dir>]"}))

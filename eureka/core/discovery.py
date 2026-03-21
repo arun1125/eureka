@@ -113,9 +113,19 @@ def discover_all(
     """Run all discovery methods, score, and return sorted candidates."""
     candidates = find_triangles(conn, embeddings) + find_v_structures(conn, embeddings)
 
+    # Build source map: which source did each atom come from?
+    # Use tags as proxy (atoms don't have source_id directly)
+    source_map = {}
+    rows = conn.execute(
+        "SELECT nt.slug, t.name FROM note_tags nt JOIN tags t ON nt.tag_id = t.id"
+    ).fetchall()
+    for r in rows:
+        if r["slug"] not in source_map:
+            source_map[r["slug"]] = r["name"]
+
     for c in candidates:
         candidate_emb = {s: embeddings[s] for s in c["atoms"] if s in embeddings}
-        c["score"] = score_candidate(c["atoms"], candidate_emb, embeddings)
+        c["score"] = score_candidate(c["atoms"], candidate_emb, embeddings, source_map)
 
     candidates.sort(key=lambda c: c["score"], reverse=True)
     return candidates

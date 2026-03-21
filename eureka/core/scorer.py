@@ -1,4 +1,4 @@
-"""IT metric scorer: coherence x novelty x emergence → 0-100."""
+"""IT metric scorer: coherence x novelty x emergence x diversity → 0-100."""
 
 from __future__ import annotations
 
@@ -12,13 +12,13 @@ def score_candidate(
     atom_slugs: list[str],
     candidate_embeddings: dict[str, list[float]],
     all_embeddings: dict[str, list[float]],
+    source_map: dict[str, str] | None = None,
 ) -> float:
     """Score a molecule candidate using the IT metric.
 
-    Returns a value in [0, 100].  Returns 0 if any slug is missing from
-    *candidate_embeddings*.
+    Returns a value in [0, 100].
+    source_map: slug → source_title (optional, boosts cross-source molecules).
     """
-    # Guard: every slug must have an embedding
     if any(slug not in candidate_embeddings for slug in atom_slugs):
         return 0
 
@@ -36,8 +36,7 @@ def score_candidate(
     coh_clamped = max(-1.0, min(1.0, coherence))
     novelty = math.sqrt(1.0 - coh_clamped ** 2)
 
-    # --- Emergence ---
-    # Typicality of a vector = average cosine similarity to ALL vectors
+    # --- Emergence: how unusual is this combination? ---
     def typicality(vec: list[float]) -> float:
         if not all_vectors:
             return 0.0
@@ -45,15 +44,23 @@ def score_candidate(
 
     avg_atom_typicality = sum(typicality(v) for v in vectors) / len(vectors)
 
-    # Centroid of the candidate
     dim = len(vectors[0])
     centroid = [sum(v[d] for v in vectors) / len(vectors) for d in range(dim)]
     centroid_typicality = typicality(centroid)
 
     if centroid_typicality == 0:
-        emergence = 0.0
+        emergence = 1.0
     else:
         emergence = avg_atom_typicality / centroid_typicality
 
-    raw = coherence * novelty * emergence
-    return raw * 100
+    # --- Source diversity bonus: cross-source molecules score higher ---
+    diversity = 1.0
+    if source_map:
+        sources = {source_map.get(s, "unknown") for s in atom_slugs}
+        if len(sources) >= 3:
+            diversity = 1.5  # 3+ sources = 50% bonus
+        elif len(sources) >= 2:
+            diversity = 1.25  # 2 sources = 25% bonus
+
+    raw = coherence * novelty * (emergence ** 1.5) * diversity
+    return min(raw * 100, 100)

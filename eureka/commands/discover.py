@@ -42,8 +42,16 @@ def run_discover(brain_dir_path: str, method: str = "all", count: int = 10) -> N
     # Load embeddings
     embeddings = _load_embeddings(conn)
 
-    # Run discovery
-    candidates = discover_all(conn, embeddings)[:count]
+    # Run discovery — skip candidates that already exist as molecules
+    all_candidates = discover_all(conn, embeddings)
+    existing_slugs = {r["slug"] for r in conn.execute("SELECT slug FROM molecules").fetchall()}
+    candidates = []
+    for c in all_candidates:
+        slug = _slugify(c["atoms"][0] + "-" + c["atoms"][1]) if len(c["atoms"]) >= 2 else ""
+        if slug not in existing_slugs:
+            candidates.append(c)
+        if len(candidates) >= count:
+            break
 
     # Log discovery run
     conn.execute(
