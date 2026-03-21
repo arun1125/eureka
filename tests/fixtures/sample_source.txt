@@ -1,0 +1,19 @@
+The Character of Physical Law by Richard Feynman
+
+Chapter 1: The Law of Gravitation
+
+The law of gravitation is that two bodies exert a force between each other which varies inversely as the square of the distance between them, and varies directly as the product of their masses. Everything pulls everything else. The force is proportional to the product of the masses and varies inversely as the square of the distance.
+
+Newton discovered this law by noticing that the same force that makes an apple fall from a tree also keeps the moon in its orbit. The key insight was that the laws governing celestial bodies are the same as those on Earth. There is no separate set of rules for the heavens.
+
+Chapter 2: The Relation of Mathematics to Physics
+
+Mathematics is a language for talking about nature. It is not just a tool but the language in which the laws of physics are written. You cannot understand physics without mathematics. Every attempt to do so produces only a vague shadow of the real thing.
+
+The relationship between mathematics and physics is peculiar. Mathematics was not invented to describe nature — it was invented for its own sake. Yet it turns out to be the language nature speaks. This is one of the great mysteries.
+
+Chapter 3: The Great Conservation Principles
+
+There is a fact, or if you wish, a law, governing all natural phenomena that are known to date. There is no known exception to this law — it is exact so far as we know. The law is called the conservation of energy. It states that there is a certain quantity, which we call energy, that does not change in the manifold changes which nature undergoes.
+
+Energy comes in many forms — kinetic, potential, thermal, electrical, chemical — but the total amount never changes. This is not a description of a mechanism but a mathematical trick, a bookkeeping device that happens to work perfectly.

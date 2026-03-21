@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Eureka</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0a0a0a; color: #e5e5e5; font-family: 'Inter', -apple-system, sans-serif; }
+
+/* Tabs */
+.tab-bar { display: flex; gap: 0; border-bottom: 1px solid #1f1f1f; background: #0a0a0a; position: sticky; top: 0; z-index: 100; }
+.tab { padding: 12px 24px; cursor: pointer; color: #737373; font-size: 14px; border-bottom: 2px solid transparent; transition: all 0.2s; }
+.tab:hover { color: #e5e5e5; }
+.tab.active { color: #e5e5e5; border-bottom-color: #e5e5e5; }
+.tab-content { display: none; padding: 24px; }
+.tab-content.active { display: block; }
+
+/* Cards */
+.card { background: #141414; border: 1px solid #1f1f1f; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+.card h3 { font-size: 14px; margin-bottom: 8px; line-height: 1.4; }
+.card p { color: #737373; font-size: 13px; line-height: 1.5; }
+.card .meta { display: flex; gap: 12px; margin-top: 8px; font-size: 12px; color: #737373; }
+
+/* Badges */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+.badge-triangle { background: #6ba36820; color: #6ba368; }
+.badge-v-structure { background: #c2707020; color: #c27070; }
+.badge-bridge { background: #7a9cc620; color: #7a9cc6; }
+.badge-walk { background: #c4956a20; color: #c4956a; }
+.badge-other { background: #8a8a8a20; color: #8a8a8a; }
+
+/* ELI5 */
+.eli5 { background: #1a1a1a; border-left: 3px solid #c4956a; padding: 8px 12px; margin: 8px 0; font-size: 13px; color: #c4956a; }
+
+/* Score */
+.score { font-size: 24px; font-weight: 700; color: #e5e5e5; }
+.score-label { font-size: 11px; color: #737373; text-transform: uppercase; letter-spacing: 1px; }
+
+/* Search */
+.search-input { width: 100%; padding: 12px 16px; background: #141414; border: 1px solid #1f1f1f; border-radius: 8px; color: #e5e5e5; font-size: 14px; outline: none; margin-bottom: 16px; }
+.search-input:focus { border-color: #737373; }
+.search-input::placeholder { color: #737373; }
+
+/* Graph */
+#graph-container { width: 100%; height: calc(100vh - 100px); }
+#graph-container svg { width: 100%; height: 100%; }
+.node-label { font-size: 10px; fill: #737373; pointer-events: none; }
+.legend { position: absolute; bottom: 24px; left: 24px; background: #141414; border: 1px solid #1f1f1f; border-radius: 8px; padding: 12px; font-size: 12px; }
+.legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.legend-shape { width: 12px; height: 12px; }
+
+/* Review buttons */
+.review-actions { display: flex; gap: 8px; margin-top: 12px; }
+.btn { padding: 8px 20px; border: 1px solid #1f1f1f; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.2s; background: transparent; }
+.btn-accept { color: #6ba368; border-color: #6ba368; }
+.btn-accept:hover { background: #6ba36820; }
+.btn-reject { color: #c27070; border-color: #c27070; }
+.btn-reject:hover { background: #c2707020; }
+
+/* Stats bar */
+.stats-bar { display: flex; gap: 24px; padding: 16px 24px; border-bottom: 1px solid #1f1f1f; }
+.stat { text-align: center; }
+.stat-value { font-size: 20px; font-weight: 700; }
+.stat-label { font-size: 11px; color: #737373; text-transform: uppercase; letter-spacing: 1px; }
+
+/* Filters */
+.filters { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.filter-btn { padding: 4px 12px; border: 1px solid #1f1f1f; border-radius: 16px; cursor: pointer; font-size: 12px; color: #737373; background: transparent; transition: all 0.2s; }
+.filter-btn:hover, .filter-btn.active { color: #e5e5e5; border-color: #e5e5e5; }
+
+/* Molecule grid */
+.mol-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
+
+/* Atom pills */
+.atom-pill { display: inline-block; padding: 2px 8px; margin: 2px; border-radius: 4px; font-size: 11px; background: #1f1f1f; color: #737373; }
+
+/* Community colors */
+.community-0 { color: #6ba368; } .community-1 { color: #c4956a; }
+.community-2 { color: #7a9cc6; } .community-3 { color: #c27070; }
+.community-4 { color: #9b8ec4; } .community-5 { color: #6ab0a3; }
+.community-6 { color: #c4a74e; } .community-7 { color: #8a8a8a; }
+</style>
+</head>
+<body>
+
+<div class="stats-bar" id="stats-bar"></div>
+
+<div class="tab-bar">
+  <div class="tab active" data-tab="graph">Graph</div>
+  <div class="tab" data-tab="search">Search</div>
+  <div class="tab" data-tab="molecules">Molecules</div>
+  <div class="tab" data-tab="review">Review</div>
+</div>
+
+<!-- Graph Tab -->
+<div class="tab-content active" id="tab-graph">
+  <div id="graph-container">
+    <svg></svg>
+  </div>
+  <div class="legend" id="legend"></div>
+</div>
+
+<!-- Search Tab -->
+<div class="tab-content" id="tab-search">
+  <input type="text" class="search-input" id="search-input" placeholder="Search atoms and molecules..." autofocus>
+  <div id="search-results"></div>
+</div>
+
+<!-- Molecules Tab -->
+<div class="tab-content" id="tab-molecules">
+  <div class="filters" id="mol-filters"></div>
+  <div class="mol-grid" id="mol-grid"></div>
+</div>
+
+<!-- Review Tab -->
+<div class="tab-content" id="tab-review">
+  <div id="review-count" style="margin-bottom:16px; color:#737373; font-size:13px;"></div>
+  <div id="review-cards"></div>
+</div>
+
+<script>
+const COLORS = ['#6ba368','#c4956a','#7a9cc6','#c27070','#9b8ec4','#6ab0a3','#c4a74e','#8a8a8a'];
+
+// HTML escape to prevent XSS
+function esc(s) {
+  if (!s) return '';
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// Tab switching
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+    if (tab.dataset.tab === 'graph') initGraph();
+    if (tab.dataset.tab === 'molecules') loadMolecules();
+    if (tab.dataset.tab === 'review') loadReview();
+  });
+});
+
+// Stats
+async function loadStats() {
+  const data = await fetch('/api/stats').then(r => r.json());
+  document.getElementById('stats-bar').innerHTML = `
+    <div class="stat"><div class="stat-value">${data.atoms||0}</div><div class="stat-label">Atoms</div></div>
+    <div class="stat"><div class="stat-value">${data.molecules?.total||0}</div><div class="stat-label">Molecules</div></div>
+    <div class="stat"><div class="stat-value">${data.sources||0}</div><div class="stat-label">Sources</div></div>
+    <div class="stat"><div class="stat-value">${data.edges||0}</div><div class="stat-label">Edges</div></div>
+    <div class="stat"><div class="stat-value">${data.molecules?.pending||0}</div><div class="stat-label">Pending</div></div>
+  `;
+}
+loadStats();
+
+// Graph
+let graphInitialized = false;
+async function initGraph() {
+  if (graphInitialized) return;
+  graphInitialized = true;
+  const data = await fetch('/api/graph').then(r => r.json());
+  const container = document.getElementById('graph-container');
+  const width = container.clientWidth, height = container.clientHeight;
+  const svg = d3.select('#graph-container svg').attr('viewBox', [0, 0, width, height]);
+
+  const simulation = d3.forceSimulation(data.nodes)
+    .force('link', d3.forceLink(data.edges).id(d => d.slug).distance(80))
+    .force('charge', d3.forceManyBody().strength(-120))
+    .force('center', d3.forceCenter(width/2, height/2))
+    .force('collision', d3.forceCollide(20));
+
+  const link = svg.append('g').selectAll('line').data(data.edges).join('line')
+    .attr('stroke', '#1f1f1f').attr('stroke-width', 1);
+
+  const node = svg.append('g').selectAll('g').data(data.nodes).join('g')
+    .call(d3.drag().on('start', dragstarted).on('drag', dragged).on('end', dragended));
+
+  // Draw shapes based on type
+  node.each(function(d) {
+    const g = d3.select(this);
+    const color = COLORS[d.community % COLORS.length] || COLORS[7];
+    if (d.type === 'atom') {
+      g.append('circle').attr('r', 6).attr('fill', color);
+    } else if (d.method === 'triangle') {
+      g.append('polygon').attr('points', '0,-8 7,5 -7,5').attr('fill', 'none').attr('stroke', color).attr('stroke-width', 2);
+    } else if (d.method === 'v-structure') {
+      g.append('text').text('V').attr('text-anchor', 'middle').attr('dy', 4).attr('fill', color).attr('font-size', 14).attr('font-weight', 700);
+    } else {
+      g.append('rect').attr('x', -5).attr('y', -5).attr('width', 10).attr('height', 10)
+        .attr('transform', 'rotate(45)').attr('fill', color);
+    }
+  });
+
+  // Labels
+  node.append('text').text(d => d.slug.slice(0, 25) + (d.slug.length > 25 ? '...' : ''))
+    .attr('class', 'node-label').attr('dx', 12).attr('dy', 4);
+
+  // Hover highlight
+  node.on('mouseover', function(e, d) {
+    const neighbors = new Set();
+    data.edges.forEach(l => { if (l.source.slug===d.slug) neighbors.add(l.target.slug); if (l.target.slug===d.slug) neighbors.add(l.source.slug); });
+    node.style('opacity', n => n.slug===d.slug || neighbors.has(n.slug) ? 1 : 0.15);
+    link.style('opacity', l => l.source.slug===d.slug || l.target.slug===d.slug ? 1 : 0.05);
+  }).on('mouseout', () => { node.style('opacity', 1); link.style('opacity', 1); });
+
+  // Click detail
+  node.on('click', (e, d) => {
+    alert(`${d.slug}\n\nType: ${d.type}\nMethod: ${d.method||'—'}\nCommunity: ${d.community}`);
+  });
+
+  simulation.on('tick', () => {
+    link.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y).attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
+    node.attr('transform', d => `translate(${d.x},${d.y})`);
+  });
+
+  function dragstarted(e,d) { if(!e.active) simulation.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; }
+  function dragged(e,d) { d.fx=e.x; d.fy=e.y; }
+  function dragended(e,d) { if(!e.active) simulation.alphaTarget(0); d.fx=null; d.fy=null; }
+
+  // Legend
+  document.getElementById('legend').innerHTML = `
+    <div class="legend-item"><svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="#e5e5e5"/></svg> Atom</div>
+    <div class="legend-item"><svg width="12" height="12"><polygon points="6,1 11,11 1,11" fill="none" stroke="#e5e5e5" stroke-width="1.5"/></svg> Triangle</div>
+    <div class="legend-item"><svg width="12" height="12"><text x="6" y="10" text-anchor="middle" fill="#e5e5e5" font-size="11" font-weight="700">V</text></svg> V-structure</div>
+    <div class="legend-item"><svg width="12" height="12"><rect x="2" y="2" width="8" height="8" transform="rotate(45,6,6)" fill="#e5e5e5"/></svg> Other molecule</div>
+  `;
+}
+initGraph();
+
+// Search
+let searchTimeout;
+document.getElementById('search-input').addEventListener('input', e => {
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(() => doSearch(e.target.value), 300);
+});
+
+async function doSearch(q) {
+  if (!q.trim()) { document.getElementById('search-results').innerHTML = ''; return; }
+  const data = await fetch('/api/search?q=' + encodeURIComponent(q)).then(r => r.json());
+  document.getElementById('search-results').innerHTML = (data.results||[]).map(r => `
+    <div class="card">
+      <h3>${esc(r.slug.replace(/-/g, ' '))}</h3>
+      <p>${r.body ? esc(r.body.slice(0, 200)) + '...' : ''}</p>
+      ${r.tags ? '<div class="meta">' + r.tags.split(',').map(t => '<span class="atom-pill">'+esc(t.trim())+'</span>').join('') + '</div>' : ''}
+    </div>
+  `).join('') || '<p style="color:#737373">No results</p>';
+}
+
+// Molecules
+async function loadMolecules() {
+  const data = await fetch('/api/molecules').then(r => r.json());
+  const mols = data.molecules || [];
+
+  // Method filters
+  const methods = [...new Set(mols.map(m => m.method))];
+  document.getElementById('mol-filters').innerHTML =
+    '<div class="filter-btn active" data-method="all">All</div>' +
+    methods.map(m => `<div class="filter-btn" data-method="${m}">${m}</div>`).join('');
+
+  document.querySelectorAll('#mol-filters .filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#mol-filters .filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderMolecules(mols, btn.dataset.method);
+    });
+  });
+
+  renderMolecules(mols, 'all');
+}
+
+function renderMolecules(mols, method) {
+  const filtered = method === 'all' ? mols : mols.filter(m => m.method === method);
+  document.getElementById('mol-grid').innerHTML = filtered.sort((a,b) => b.score-a.score).map(m => `
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:start;">
+        <h3 style="flex:1;">${esc(m.slug.replace(/-/g, ' '))}</h3>
+        <div><span class="score">${Math.round(m.score)}</span></div>
+      </div>
+      ${m.eli5 ? '<div class="eli5">' + esc(m.eli5) + '</div>' : ''}
+      <div class="meta">
+        <span class="badge badge-${m.method === 'v-structure' ? 'v-structure' : m.method === 'triangle' ? 'triangle' : 'other'}">${esc(m.method)}</span>
+        <span>${esc(m.review_status)}</span>
+      </div>
+    </div>
+  `).join('') || '<p style="color:#737373">No molecules yet</p>';
+}
+
+// Review
+async function loadReview() {
+  const data = await fetch('/api/molecules').then(r => r.json());
+  const pending = (data.molecules||[]).filter(m => m.review_status === 'pending');
+  document.getElementById('review-count').textContent = `${pending.length} pending review`;
+  document.getElementById('review-cards').innerHTML = pending.map(m => {
+    const safeSlug = esc(m.slug);
+    return `
+    <div class="card" id="review-${safeSlug}" data-slug="${safeSlug}">
+      <h3>${esc(m.slug.replace(/-/g, ' '))}</h3>
+      ${m.eli5 ? '<div class="eli5">' + esc(m.eli5) + '</div>' : ''}
+      <p>${esc(m.body||'')}</p>
+      <div class="meta">
+        <span class="badge badge-${m.method === 'v-structure' ? 'v-structure' : m.method === 'triangle' ? 'triangle' : 'other'}">${esc(m.method)}</span>
+        <span>Score: ${Math.round(m.score)}</span>
+      </div>
+      <div class="review-actions">
+        <button class="btn btn-accept" data-action="yes" data-slug="${safeSlug}">Yes (y)</button>
+        <button class="btn btn-reject" data-action="no" data-slug="${safeSlug}">No (n)</button>
+      </div>
+    </div>`;
+  }).join('') || '<p style="color:#737373">Nothing to review</p>';
+
+  // Bind review buttons via data attributes instead of inline onclick
+  document.querySelectorAll('#review-cards .btn').forEach(btn => {
+    btn.addEventListener('click', () => reviewMolecule(btn.dataset.slug, btn.dataset.action));
+  });
+}
+
+let currentReviewIndex = 0;
+document.addEventListener('keydown', e => {
+  if (document.querySelector('#tab-review.active')) {
+    const cards = document.querySelectorAll('#review-cards .card');
+    if (cards.length === 0) return;
+    const slug = cards[currentReviewIndex]?.dataset.slug;
+    if (!slug) return;
+    if (e.key === 'y') reviewMolecule(slug, 'yes');
+    if (e.key === 'n') reviewMolecule(slug, 'no');
+    if (e.key === 'ArrowDown') { currentReviewIndex = Math.min(currentReviewIndex+1, cards.length-1); cards[currentReviewIndex].scrollIntoView({behavior:'smooth'}); }
+    if (e.key === 'ArrowUp') { currentReviewIndex = Math.max(currentReviewIndex-1, 0); cards[currentReviewIndex].scrollIntoView({behavior:'smooth'}); }
+  }
+});
+
+async function reviewMolecule(slug, decision) {
+  await fetch('/api/review/' + slug, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({decision})
+  });
+  document.getElementById('review-' + slug)?.remove();
+  const remaining = document.querySelectorAll('#review-cards .card').length;
+  document.getElementById('review-count').textContent = `${remaining} pending review`;
+  loadStats();
+}
+</script>
+</body>
+</html>
