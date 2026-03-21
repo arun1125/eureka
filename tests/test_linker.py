@@ -1,4 +1,4 @@
-"""Slice 3: linker — compute top-5 similarity edges per atom."""
+"""Slice 3: linker — compute top-N similarity edges per atom."""
 
 import shutil
 from pathlib import Path
@@ -35,8 +35,8 @@ def test_link_all_creates_edges_with_similarity(tmp_path):
         assert 0.0 <= e["similarity"] <= 1.0
 
 
-def test_link_all_max_5_edges_per_node(tmp_path):
-    """Each atom has at most 5 outgoing similarity edges."""
+def test_link_all_max_10_edges_per_node(tmp_path):
+    """Each atom has at most 10 outgoing similarity edges."""
     brain_dir, conn = _setup_brain(tmp_path)
     link_all(conn)
 
@@ -46,7 +46,7 @@ def test_link_all_max_5_edges_per_node(tmp_path):
             "SELECT COUNT(*) as c FROM edges WHERE source = ? AND similarity IS NOT NULL",
             (slug,)
         ).fetchone()["c"]
-        assert count <= 5
+        assert count <= 10
 
 
 def test_link_all_is_idempotent(tmp_path):

@@ -35,9 +35,15 @@ def link_all(conn: sqlite3.Connection, top_n: int = 10) -> None:
     for i, slug in enumerate(slugs):
         top_indices = np.argsort(-sim[i])[:top_n]
         for j in top_indices:
+            j = int(j)
+            if j == i:
+                continue  # skip self
+            similarity = float(sim[i, j])
+            if similarity < 0:
+                continue  # skip invalid
             conn.execute(
                 "INSERT OR IGNORE INTO edges (source, target, similarity, created_at) VALUES (?, ?, ?, ?)",
-                (slug, slugs[int(j)], round(float(sim[i, int(j)]), 4), now),
+                (slug, slugs[j], round(similarity, 4), now),
             )
 
     conn.commit()
