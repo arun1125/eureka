@@ -173,6 +173,29 @@ def create_app(brain_dir: str) -> dict:
                 finally:
                     conn.close()
 
+            elif path.startswith("/api/atom/"):
+                slug = path[len("/api/atom/"):]
+                conn = open_db(brain_dir)
+                try:
+                    row = conn.execute(
+                        "SELECT slug, title, body FROM atoms WHERE slug = ?", (slug,)
+                    ).fetchone()
+                    if row:
+                        tags = [r["name"] for r in conn.execute(
+                            "SELECT t.name FROM tags t JOIN note_tags nt ON t.id = nt.tag_id WHERE nt.slug = ?",
+                            (slug,),
+                        ).fetchall()]
+                        self._json_response({
+                            "slug": row["slug"],
+                            "title": row["title"],
+                            "body": row["body"],
+                            "tags": tags,
+                        })
+                    else:
+                        self._json_response({"error": "not found"}, 404)
+                finally:
+                    conn.close()
+
             elif path == "" or path == "/":
                 # Serve dashboard
                 dashboard_path = Path(__file__).parent.parent / "dashboard" / "index.html"
