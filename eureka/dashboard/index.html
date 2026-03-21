@@ -132,7 +132,15 @@ body { background: #0a0a0a; color: #e5e5e5; font-family: 'Inter', -apple-system,
 
 <!-- Molecules Tab -->
 <div class="tab-content" id="tab-molecules">
-  <div class="filters" id="mol-filters"></div>
+  <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+    <div class="filters" id="mol-filters" style="margin-bottom:0;flex:1;"></div>
+    <div class="filters" id="mol-sort" style="margin-bottom:0;">
+      <div class="filter-btn active" data-sort="score">Score</div>
+      <div class="filter-btn" data-sort="newest">Newest</div>
+      <div class="filter-btn" data-sort="alpha">A-Z</div>
+      <div class="filter-btn" data-sort="shuffle">Shuffle</div>
+    </div>
+  </div>
   <div class="mol-grid" id="mol-grid"></div>
 </div>
 
@@ -319,12 +327,15 @@ async function doSearch(q, tag) {
 doSearch('');
 
 // Molecules
+let currentMolSort = 'score';
+let allMols = [];
+
 async function loadMolecules() {
   const data = await fetch('/api/molecules').then(r => r.json());
-  const mols = data.molecules || [];
+  allMols = data.molecules || [];
 
   // Method filters
-  const methods = [...new Set(mols.map(m => m.method))];
+  const methods = [...new Set(allMols.map(m => m.method))];
   document.getElementById('mol-filters').innerHTML =
     '<div class="filter-btn active" data-method="all">All</div>' +
     methods.map(m => `<div class="filter-btn" data-method="${m}">${m}</div>`).join('');
@@ -333,16 +344,33 @@ async function loadMolecules() {
     btn.addEventListener('click', () => {
       document.querySelectorAll('#mol-filters .filter-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      renderMolecules(mols, btn.dataset.method);
+      renderMolecules(allMols, btn.dataset.method, currentMolSort);
     });
   });
 
-  renderMolecules(mols, 'all');
+  // Sort buttons
+  document.querySelectorAll('#mol-sort .filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#mol-sort .filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentMolSort = btn.dataset.sort;
+      const activeMethod = document.querySelector('#mol-filters .filter-btn.active')?.dataset.method || 'all';
+      renderMolecules(allMols, activeMethod, currentMolSort);
+    });
+  });
+
+  renderMolecules(allMols, 'all', currentMolSort);
 }
 
-function renderMolecules(mols, method) {
-  const filtered = method === 'all' ? mols : mols.filter(m => m.method === method);
-  document.getElementById('mol-grid').innerHTML = filtered.sort((a,b) => b.score-a.score).map(m => `
+function renderMolecules(mols, method, sort) {
+  let filtered = method === 'all' ? [...mols] : mols.filter(m => m.method === method);
+
+  if (sort === 'score') filtered.sort((a,b) => b.score - a.score);
+  else if (sort === 'newest') filtered.sort((a,b) => (b.created_at||'').localeCompare(a.created_at||''));
+  else if (sort === 'alpha') filtered.sort((a,b) => a.slug.localeCompare(b.slug));
+  else if (sort === 'shuffle') filtered.sort(() => Math.random() - 0.5);
+
+  document.getElementById('mol-grid').innerHTML = filtered.map(m => `
     <div class="card" style="cursor:pointer" data-mol-slug="${esc(m.slug)}">
       <div style="display:flex;justify-content:space-between;align-items:start;">
         <h3 style="flex:1;">${esc(m.slug.replace(/-/g, ' '))}</h3>

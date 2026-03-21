@@ -168,7 +168,7 @@ def create_app(brain_dir: str) -> dict:
                 conn = open_db(brain_dir)
                 try:
                     rows = conn.execute(
-                        "SELECT slug, eli5, score, method, review_status, body FROM molecules"
+                        "SELECT slug, eli5, score, method, review_status, body, created_at FROM molecules"
                     ).fetchall()
                     molecules = []
                     for row in rows:
@@ -179,6 +179,7 @@ def create_app(brain_dir: str) -> dict:
                             "method": row["method"],
                             "review_status": row["review_status"],
                             "body": row["body"],
+                            "created_at": row["created_at"],
                         })
                     self._json_response({"molecules": molecules})
                 finally:
