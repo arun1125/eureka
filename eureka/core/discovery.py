@@ -462,14 +462,14 @@ def discover_all(conn, embeddings):
         + find_residuals(conn, embeddings)
     )
 
-    # Build source map from tags
+    # Build source map from atoms table (real book sources)
     source_map = {}
-    rows = conn.execute(
-        "SELECT nt.slug, t.name FROM note_tags nt JOIN tags t ON nt.tag_id = t.id"
-    ).fetchall()
-    for r in rows:
-        if r["slug"] not in source_map:
-            source_map[r["slug"]] = r["name"]
+    try:
+        rows = conn.execute("SELECT slug, source_title FROM atoms WHERE source_title IS NOT NULL").fetchall()
+        for r in rows:
+            source_map[r["slug"]] = r["source_title"]
+    except Exception:
+        pass  # source_title column may not exist in older brains
 
     for c in candidates:
         atom_slugs = [a if isinstance(a, str) else a["slug"] for a in c["atoms"]]
