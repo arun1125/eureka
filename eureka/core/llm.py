@@ -31,6 +31,7 @@ class KimiK2:
         self.base_url = base_url
 
     def generate(self, prompt: str) -> str:
+        import time
         body = json.dumps({
             "model": "kimi-k2.5",
             "messages": [{"role": "user", "content": prompt}],
@@ -38,17 +39,26 @@ class KimiK2:
             "max_tokens": 8192,
         }).encode()
 
-        req = urllib.request.Request(
-            f"{self.base_url}/chat/completions",
-            data=body,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.api_key}",
-            },
-        )
-        resp = urllib.request.urlopen(req, timeout=120)
-        data = json.loads(resp.read().decode())
-        return data["choices"][0]["message"]["content"].strip()
+        for attempt in range(4):
+            try:
+                req = urllib.request.Request(
+                    f"{self.base_url}/chat/completions",
+                    data=body,
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {self.api_key}",
+                    },
+                )
+                resp = urllib.request.urlopen(req, timeout=120)
+                data = json.loads(resp.read().decode())
+                return data["choices"][0]["message"]["content"].strip()
+            except urllib.error.HTTPError as e:
+                if e.code == 429 and attempt < 3:
+                    wait = (attempt + 1) * 10
+                    print(f"Rate limited, waiting {wait}s...", file=sys.stderr, flush=True)
+                    time.sleep(wait)
+                else:
+                    raise
 
 
 def get_llm():
