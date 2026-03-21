@@ -234,6 +234,7 @@ def create_app(brain_dir: str) -> dict:
                 slug = path[len("/api/atom/"):]
                 conn = open_db(brain_dir)
                 try:
+                    # Check atoms first
                     row = conn.execute(
                         "SELECT slug, title, body FROM atoms WHERE slug = ?", (slug,)
                     ).fetchone()
@@ -247,9 +248,30 @@ def create_app(brain_dir: str) -> dict:
                             "title": row["title"],
                             "body": row["body"],
                             "tags": tags,
+                            "type": "atom",
                         })
                     else:
-                        self._json_response({"error": "not found"}, 404)
+                        # Check molecules
+                        mol = conn.execute(
+                            "SELECT slug, title, eli5, body, method, score FROM molecules WHERE slug = ?", (slug,)
+                        ).fetchone()
+                        if mol:
+                            atoms = [r["atom_slug"] for r in conn.execute(
+                                "SELECT atom_slug FROM molecule_atoms WHERE molecule_slug = ?", (slug,)
+                            ).fetchall()]
+                            self._json_response({
+                                "slug": mol["slug"],
+                                "title": mol["title"],
+                                "body": mol["body"] or "",
+                                "eli5": mol["eli5"] or "",
+                                "method": mol["method"],
+                                "score": mol["score"],
+                                "tags": [mol["method"]] if mol["method"] else [],
+                                "atoms": atoms,
+                                "type": "molecule",
+                            })
+                        else:
+                            self._json_response({"error": "not found"}, 404)
                 finally:
                     conn.close()
 

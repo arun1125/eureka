@@ -471,7 +471,16 @@ async function openDetail(slug, edges) {
   if (data.error) return;
 
   document.getElementById('detail-title').textContent = data.title || slug.replace(/-/g, ' ');
-  document.getElementById('detail-body').textContent = data.body || '';
+
+  let bodyHtml = esc(data.body || '');
+  if (data.type === 'molecule') {
+    bodyHtml = (data.eli5 ? '<div class="eli5">' + esc(data.eli5) + '</div>' : '')
+      + '<p style="margin-top:12px;white-space:pre-wrap;">' + esc(data.body || '') + '</p>'
+      + '<div class="meta" style="margin-top:8px;"><span class="badge badge-' + (data.method === 'triangle' ? 'triangle' : data.method === 'v-structure' ? 'v-structure' : 'other') + '">' + esc(data.method || '') + '</span>'
+      + '<span>Score: ' + Math.round(data.score || 0) + '</span></div>';
+  }
+  document.getElementById('detail-body').innerHTML = data.type === 'molecule' ? bodyHtml : '<p>' + bodyHtml + '</p>';
+
   document.getElementById('detail-tags').innerHTML = (data.tags || [])
     .map(t => '<span class="atom-pill">' + esc(t) + '</span>').join('');
 
