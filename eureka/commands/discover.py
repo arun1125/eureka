@@ -81,10 +81,27 @@ def run_discover(brain_dir_path: str, method: str = "all", count: int = 10) -> N
                     atom_bodies[slug] = f"# {row['title']}\n\n{row['body']}"
 
             prompt = (
-                "Write a molecule (a synthesis note) connecting these atoms. "
-                "The molecule should say something none of the atoms say alone — a cross-source insight.\n\n"
+                "Write a molecule — a synthesis note that connects these atoms into a single insight none of them state alone.\n\n"
+                "Here are the atoms:\n\n"
                 + "\n\n---\n\n".join(f"[[{s}]]\n{atom_bodies.get(s, '')}" for s in atom_slugs)
-                + "\n\nFormat:\n# <title as an opinionated claim>\n\n<2-3 sentence body with [[wikilinks]]>\n\neli5: <one sentence a 10 year old would understand>\n"
+                + "\n\n---\n\n"
+                "Write the molecule in EXACTLY this format (no deviations):\n\n"
+                "```\n"
+                "# Title as a short opinionated claim (under 80 chars)\n"
+                "\n"
+                "First paragraph: weave the atoms together, explaining WHY these ideas connect — not just THAT they connect. "
+                "Use [[wikilinks]] to reference atoms naturally in the flow. Write like an essay, not a list.\n"
+                "\n"
+                "Second paragraph: extract the higher-order principle — the thing you can only see once all atoms are in view. "
+                "This is the payoff. Be specific and actionable.\n"
+                "\n"
+                "eli5: One vivid sentence a 10-year-old would understand. Use a concrete metaphor or image, not abstract language.\n"
+                "```\n\n"
+                "Rules:\n"
+                "- Title must be a SHORT claim (under 80 chars). No wikilinks in the title.\n"
+                "- Body should be 2 paragraphs, 4-8 sentences total.\n"
+                "- ELI5 must use a physical metaphor (not 'it's like when you...' but a specific image).\n"
+                "- Do NOT just summarize the atoms — synthesize them into something new.\n"
             )
 
             try:
@@ -94,16 +111,22 @@ def run_discover(brain_dir_path: str, method: str = "all", count: int = 10) -> N
                 print(f"LLM error: {e}", file=sys.stderr)
                 continue
 
-            # Parse response
-            lines = response.strip().split("\n")
+            # Parse response — strip code fences and extract fields
+            raw = response.strip()
+            raw = re.sub(r"^```\w*\n?", "", raw)
+            raw = re.sub(r"\n?```$", "", raw)
+            lines = raw.strip().split("\n")
             title = ""
             eli5 = ""
             body_lines = []
 
             for line in lines:
+                stripped = line.strip()
+                if stripped.startswith("```"):
+                    continue  # skip any remaining fences
                 if line.startswith("# ") and not title:
                     title = line[2:].strip()
-                elif line.strip().lower().startswith("eli5:"):
+                elif stripped.lower().startswith("eli5:"):
                     eli5 = line.split(":", 1)[1].strip()
                 else:
                     body_lines.append(line)

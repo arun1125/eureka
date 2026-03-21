@@ -447,6 +447,138 @@ def find_residuals(conn, embeddings, cap=20):
     return results
 
 
+# --- Per-atom discovery (for interactive Idea Lab) ---
+
+def discover_from_atom(conn, embeddings, start_slug: str, method: str, cap: int = 10):
+    """Build candidates around a specific starting atom."""
+    slugs = [s for s in _atom_slugs(conn) if s in embeddings]
+    if start_slug not in embeddings or len(slugs) < 3:
+        return []
+
+    sim = _build_sim_matrix(slugs, embeddings)
+    slug_to_idx = {s: i for i, s in enumerate(slugs)}
+    start_idx = slug_to_idx[start_slug]
+
+    # Build adjacency
+    adj = defaultdict(list)
+    for row in conn.execute("SELECT source, target FROM edges"):
+        s, t = row["source"], row["target"]
+        if s in embeddings and t in embeddings:
+            adj[s].append(t)
+            adj[t].append(s)
+
+    results = []
+    seen = set()
+
+    if method == "triangle":
+        # Find pairs (b, c) where start-b, start-c, and b-c all have decent similarity
+        sims_from_start = sim[start_idx]
+        # Get atoms with moderate similarity to start (not too close, not too far)
+        candidates_idx = [j for j in range(len(slugs)) if j != start_idx and 0.4 <= sims_from_start[j] <= 0.85]
+        for j in candidates_idx:
+            for k in candidates_idx:
+                if k <= j:
+                    continue
+                if 0.4 <= sim[j, k] <= 0.85:
+                    atoms = [start_slug, slugs[j], slugs[k]]
+                    key = tuple(sorted(atoms))
+                    if key not in seen:
+                        seen.add(key)
+                        results.append({"atoms": atoms, "method": "triangle"})
+                        if len(results) >= cap:
+                            return results
+
+    elif method == "walk":
+        for _ in range(cap * 10):
+            current = start_slug
+            path = [current]
+            for _ in range(5):
+                neighbors = adj.get(current, [])
+                if not neighbors:
+                    break
+                current = random.choice(neighbors)
+                if current not in path:
+                    path.append(current)
+            if len(path) >= 3:
+                atoms = [path[0], path[len(path) // 2], path[-1]]
+                key = tuple(sorted(atoms))
+                if key not in seen:
+                    seen.add(key)
+                    results.append({"atoms": atoms, "method": "walk"})
+                    if len(results) >= cap:
+                        return results
+
+    elif method == "antipodal":
+        # Find atoms most distant from start that share a neighbor
+        sims_from_start = sim[start_idx]
+        # Sort by lowest similarity
+        distant = np.argsort(sims_from_start)
+        for j in distant:
+            if slugs[j] == start_slug:
+                continue
+            other = slugs[j]
+            # Find shared neighbor
+            shared = set(adj.get(start_slug, [])) & set(adj.get(other, []))
+            if shared:
+                bridge = list(shared)[0]
+                atoms = [start_slug, other, bridge]
+                key = tuple(sorted(atoms))
+                if key not in seen:
+                    seen.add(key)
+                    results.append({"atoms": atoms, "bridge": bridge, "method": "antipodal"})
+                    if len(results) >= cap:
+                        return results
+
+    elif method == "cluster-boundary":
+        # Find atoms from OTHER communities that are closest to start
+        communities = _simple_communities(sim, slugs)
+        my_comm = communities.get(start_slug, -1)
+        comm_members = defaultdict(list)
+        for s, c in communities.items():
+            comm_members[c].append(s)
+
+        sims_from_start = sim[start_idx]
+        for cid, members in comm_members.items():
+            if cid == my_comm:
+                continue
+            # Find closest member of other community
+            member_sims = [(m, sims_from_start[slug_to_idx[m]]) for m in members if m in slug_to_idx]
+            member_sims.sort(key=lambda x: x[1], reverse=True)
+            if not member_sims:
+                continue
+            other = member_sims[0][0]
+            # Pick a mate from start's own community
+            my_mates = [m for m in comm_members[my_comm] if m != start_slug]
+            if my_mates:
+                mate_sims = [(m, sims_from_start[slug_to_idx[m]]) for m in my_mates]
+                mate_sims.sort(key=lambda x: x[1], reverse=True)
+                mate = mate_sims[0][0]
+                atoms = [start_slug, other, mate]
+                key = tuple(sorted(atoms))
+                if key not in seen:
+                    seen.add(key)
+                    results.append({"atoms": atoms, "method": "cluster-boundary"})
+                    if len(results) >= cap:
+                        return results
+
+    # Fallback: if method-specific logic returned nothing, use nearest neighbors
+    if not results:
+        sims_from_start = sim[start_idx].copy()
+        sims_from_start[start_idx] = -1
+        top = np.argsort(-sims_from_start)
+        for i in range(0, min(len(top) - 1, cap * 2), 2):
+            j, k = int(top[i]), int(top[i + 1])
+            atoms = [start_slug, slugs[j], slugs[k]]
+            key = tuple(sorted(atoms))
+            if key not in seen:
+                seen.add(key)
+                results.append({"atoms": atoms, "method": method})
+                if len(results) >= cap:
+                    break
+
+    return results
+
+
 # --- Orchestrator ---
 
 def discover_all(conn, embeddings):

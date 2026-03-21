@@ -114,64 +114,45 @@ def create_app(brain_dir: str) -> dict:
             elif path == "/api/search":
                 qs = parse_qs(parsed.query)
                 q = qs.get("q", [""])[0]
-                tag = qs.get("tag", [""])[0]
                 source_id = qs.get("source", [""])[0]
                 conn = open_db(brain_dir)
                 try:
-                    results = []
-                    if tag:
-                        # Filter by tag
-                        rows = conn.execute(
-                            "SELECT a.slug, a.title, a.body FROM atoms a "
-                            "JOIN note_tags nt ON a.slug = nt.slug "
-                            "JOIN tags t ON nt.tag_id = t.id "
-                            "WHERE t.name = ? ORDER BY a.title",
-                            (tag,),
-                        ).fetchall()
-                        for row in rows:
-                            results.append({
-                                "slug": row["slug"],
-                                "title": row["title"],
-                                "snippet": (row["body"] or "")[:200],
-                            })
-                    elif q:
-                        # Search by title LIKE (more reliable than FTS for short queries)
-                        rows = conn.execute(
-                            "SELECT slug, title, body FROM atoms "
-                            "WHERE title LIKE ? OR body LIKE ? OR slug LIKE ? "
-                            "ORDER BY title LIMIT 50",
-                            (f"%{q}%", f"%{q}%", f"%{q}%"),
-                        ).fetchall()
-                        for row in rows:
-                            results.append({
-                                "slug": row["slug"],
-                                "title": row["title"],
-                                "snippet": (row["body"] or "")[:200],
-                            })
-                    else:
-                        # No filter — return all atoms
-                        rows = conn.execute(
-                            "SELECT slug, title, body FROM atoms ORDER BY title LIMIT 100"
-                        ).fetchall()
-                        for row in rows:
-                            results.append({
-                                "slug": row["slug"],
-                                "title": row["title"],
-                                "snippet": (row["body"] or "")[:200],
-                            })
+                    # Build query with optional source + text filters
+                    where_clauses = []
+                    params = []
 
-                    # Get all tags and sources for filter UI
-                    all_tags = [r["name"] for r in conn.execute(
-                        "SELECT DISTINCT t.name FROM tags t "
-                        "JOIN note_tags nt ON t.id = nt.tag_id ORDER BY t.name"
-                    ).fetchall()]
+                    if source_id:
+                        # Get source title by id
+                        src_row = conn.execute(
+                            "SELECT title FROM sources WHERE id = ?", (source_id,)
+                        ).fetchone()
+                        if src_row:
+                            where_clauses.append("source_title = ?")
+                            params.append(src_row["title"])
+
+                    if q and q.strip():
+                        where_clauses.append("(title LIKE ? OR body LIKE ? OR slug LIKE ?)")
+                        params.extend([f"%{q}%", f"%{q}%", f"%{q}%"])
+
+                    sql = "SELECT slug, title, body FROM atoms"
+                    if where_clauses:
+                        sql += " WHERE " + " AND ".join(where_clauses)
+                    sql += " ORDER BY title LIMIT 100"
+
+                    rows = conn.execute(sql, params).fetchall()
+                    results = [{
+                        "slug": row["slug"],
+                        "title": row["title"],
+                        "snippet": (row["body"] or "")[:200],
+                    } for row in rows]
+
+                    # Sources for dropdown
                     all_sources = [{"id": r["id"], "title": r["title"]} for r in conn.execute(
                         "SELECT id, title FROM sources ORDER BY title"
                     ).fetchall()]
 
                     self._json_response({
                         "results": results,
-                        "tags": all_tags,
                         "sources": all_sources,
                     })
                 finally:
@@ -294,6 +275,103 @@ def create_app(brain_dir: str) -> dict:
                 else:
                     self._json_response({"error": "dashboard not found"}, 404)
 
+            elif path == "/api/neighbors":
+                qs = parse_qs(parsed.query)
+                atom_slug = qs.get("atom", [""])[0]
+                exclude = qs.get("exclude", [""])[0]
+                exclude_set = set(exclude.split(",")) if exclude else set()
+                limit = int(qs.get("limit", ["6"])[0])
+
+                if not atom_slug:
+                    self._json_response({"error": "atom parameter required"}, 400)
+                    return
+
+                conn = open_db(brain_dir)
+                try:
+                    import numpy as np
+                    from eureka.core.embeddings import _unpack_vector
+
+                    rows = conn.execute("SELECT slug, vector FROM embeddings").fetchall()
+                    embeddings = {r["slug"]: _unpack_vector(r["vector"]) for r in rows}
+
+                    if atom_slug not in embeddings:
+                        self._json_response({"error": "atom not found"}, 404)
+                        return
+
+                    # Compute similarities to all other atoms
+                    start_vec = np.array(embeddings[atom_slug], dtype=np.float32)
+                    start_vec = start_vec / (np.linalg.norm(start_vec) or 1.0)
+
+                    scored = []
+                    for slug, vec in embeddings.items():
+                        if slug == atom_slug or slug in exclude_set:
+                            continue
+                        v = np.array(vec, dtype=np.float32)
+                        v = v / (np.linalg.norm(v) or 1.0)
+                        sim = float(np.dot(start_vec, v))
+                        scored.append((slug, sim))
+
+                    scored.sort(key=lambda x: x[1], reverse=True)
+                    top = scored[:limit]
+
+                    neighbors = []
+                    for slug, sim in top:
+                        row = conn.execute("SELECT title FROM atoms WHERE slug = ?", (slug,)).fetchone()
+                        neighbors.append({
+                            "slug": slug,
+                            "title": row["title"] if row else slug.replace("-", " "),
+                            "similarity": round(sim, 4),
+                        })
+
+                    self._json_response({"neighbors": neighbors})
+                finally:
+                    conn.close()
+
+            elif path == "/api/discover/from":
+                qs = parse_qs(parsed.query)
+                atom_slug = qs.get("atom", [""])[0]
+                method = qs.get("method", ["walk"])[0]
+
+                if not atom_slug:
+                    self._json_response({"error": "atom parameter required"}, 400)
+                    return
+
+                conn = open_db(brain_dir)
+                try:
+                    from eureka.core.embeddings import _unpack_vector
+                    from eureka.core.discovery import discover_from_atom
+                    from eureka.core.scorer import score_candidate
+
+                    rows = conn.execute("SELECT slug, vector FROM embeddings").fetchall()
+                    embeddings = {r["slug"]: _unpack_vector(r["vector"]) for r in rows}
+
+                    candidates = discover_from_atom(conn, embeddings, atom_slug, method, cap=10)
+
+                    # Score each candidate
+                    source_map = {}
+                    try:
+                        for r in conn.execute("SELECT slug, source_title FROM atoms WHERE source_title IS NOT NULL"):
+                            source_map[r["slug"]] = r["source_title"]
+                    except Exception:
+                        pass
+
+                    for c in candidates:
+                        atom_slugs = c["atoms"]
+                        emb = {s: embeddings[s] for s in atom_slugs if s in embeddings}
+                        c["score"] = score_candidate(atom_slugs, emb, embeddings, source_map)
+
+                    # Add titles
+                    for c in candidates:
+                        c["atom_titles"] = {}
+                        for s in c["atoms"]:
+                            row = conn.execute("SELECT title FROM atoms WHERE slug = ?", (s,)).fetchone()
+                            c["atom_titles"][s] = row["title"] if row else s.replace("-", " ")
+
+                    candidates.sort(key=lambda c: c.get("score", 0), reverse=True)
+                    self._json_response({"candidates": candidates})
+                finally:
+                    conn.close()
+
             else:
                 self._json_response({"error": "not found"}, 404)
 
@@ -335,6 +413,109 @@ def create_app(brain_dir: str) -> dict:
                         self._json_response({"error": "invalid decision"}, 400)
                 finally:
                     conn.close()
+            elif path == "/api/generate-molecule":
+                content_length = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(content_length)
+                data = json.loads(body.decode())
+                atom_slugs = data.get("atoms", [])
+
+                if len(atom_slugs) < 2:
+                    self._json_response({"error": "need at least 2 atoms"}, 400)
+                    return
+
+                conn = open_db(brain_dir)
+                try:
+                    import re
+                    from eureka.core.llm import get_llm
+                    from datetime import datetime, timezone
+
+                    llm = get_llm()
+                    if llm is None:
+                        self._json_response({"error": "no LLM configured (set ANTHROPIC_API_KEY)"}, 500)
+                        return
+
+                    # Build prompt
+                    atom_bodies = {}
+                    for slug in atom_slugs:
+                        row = conn.execute("SELECT title, body FROM atoms WHERE slug = ?", (slug,)).fetchone()
+                        if row:
+                            atom_bodies[slug] = f"# {row['title']}\n\n{row['body']}"
+
+                    prompt = (
+                        "Write a molecule — a synthesis note that connects these atoms into a single insight none of them state alone.\n\n"
+                        "Here are the atoms:\n\n"
+                        + "\n\n---\n\n".join(f"[[{s}]]\n{atom_bodies.get(s, '')}" for s in atom_slugs)
+                        + "\n\n---\n\n"
+                        "Write the molecule in EXACTLY this format (no deviations):\n\n"
+                        "```\n"
+                        "# Title as a short opinionated claim (under 80 chars)\n"
+                        "\n"
+                        "First paragraph: weave the atoms together, explaining WHY these ideas connect. "
+                        "Use [[wikilinks]] to reference atoms naturally in the flow. Write like an essay, not a list.\n"
+                        "\n"
+                        "Second paragraph: extract the higher-order principle — the thing you can only see once all atoms are in view. "
+                        "Be specific and actionable.\n"
+                        "\n"
+                        "eli5: One vivid sentence a 10-year-old would understand. Use a concrete metaphor.\n"
+                        "```\n\n"
+                        "Rules:\n"
+                        "- Title must be a SHORT claim (under 80 chars). No wikilinks in the title.\n"
+                        "- Body should be 2 paragraphs, 4-8 sentences total.\n"
+                        "- Do NOT just summarize the atoms — synthesize them into something new.\n"
+                    )
+
+                    response = llm.generate(prompt)
+
+                    # Parse response
+                    raw = response.strip()
+                    raw = re.sub(r"^```\w*\n?", "", raw)
+                    raw = re.sub(r"\n?```$", "", raw)
+                    lines = raw.strip().split("\n")
+                    title = ""
+                    eli5 = ""
+                    body_lines = []
+                    for line in lines:
+                        stripped = line.strip()
+                        if stripped.startswith("```"):
+                            continue
+                        if line.startswith("# ") and not title:
+                            title = line[2:].strip()
+                        elif stripped.lower().startswith("eli5:"):
+                            eli5 = line.split(":", 1)[1].strip()
+                        else:
+                            body_lines.append(line)
+                    mol_body = "\n".join(body_lines).strip()
+
+                    # Slugify
+                    slug = title.lower().strip()
+                    slug = re.sub(r"[^a-z0-9\s-]", "", slug)
+                    slug = re.sub(r"[\s]+", "-", slug)[:80].strip("-")
+
+                    now = datetime.now(timezone.utc).isoformat()
+                    conn.execute(
+                        "INSERT OR REPLACE INTO molecules (slug, title, method, score, review_status, eli5, body, created_at) "
+                        "VALUES (?, ?, 'manual', 0, 'pending', ?, ?, ?)",
+                        (slug, title, eli5, mol_body, now),
+                    )
+                    for atom_slug in atom_slugs:
+                        conn.execute(
+                            "INSERT OR IGNORE INTO molecule_atoms (molecule_slug, atom_slug) VALUES (?, ?)",
+                            (slug, atom_slug),
+                        )
+                    conn.commit()
+
+                    self._json_response({
+                        "ok": True,
+                        "molecule": {
+                            "slug": slug, "title": title, "body": mol_body,
+                            "eli5": eli5, "atoms": atom_slugs,
+                        }
+                    })
+                except Exception as e:
+                    self._json_response({"error": str(e)}, 500)
+                finally:
+                    conn.close()
+
             else:
                 self._json_response({"error": "not found"}, 404)
 

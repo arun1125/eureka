@@ -6,133 +6,607 @@
 <title>Eureka</title>
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;0,900;1,400;1,700&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,300;1,8..60,400&family=Inter:wght@400;500;600&display=swap');
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { background: #0a0a0a; color: #e5e5e5; font-family: 'Inter', -apple-system, sans-serif; }
 
-/* Tabs */
-.tab-bar { display: flex; gap: 0; border-bottom: 1px solid #1f1f1f; background: #0a0a0a; position: sticky; top: 0; z-index: 100; }
-.tab { padding: 12px 24px; cursor: pointer; color: #737373; font-size: 14px; border-bottom: 2px solid transparent; transition: all 0.2s; }
-.tab:hover { color: #e5e5e5; }
-.tab.active { color: #e5e5e5; border-bottom-color: #e5e5e5; }
-.tab-content { display: none; padding: 24px; }
+:root {
+  --bg: #faf8f5;
+  --bg-warm: #f5f0ea;
+  --bg-card: #fff;
+  --border: #e0d8ce;
+  --border-dark: #c8bfb2;
+  --rule: #1a1410;
+  --text: #3d3229;
+  --text-dim: #8a7e72;
+  --text-bright: #1a1410;
+  --accent-red: #c41e1e;
+  --accent-mint: #2a7a4a;
+  --accent-coral: #c44e3e;
+  --accent-blue: #2a5a8a;
+  --accent-violet: #6a4a8a;
+  --accent-amber: #9a7a2a;
+  --accent-cyan: #2a7a7a;
+  --accent-pink: #8a3a5a;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  font-size: 16px;
+  line-height: 1.7;
+  overflow-x: hidden;
+}
+
+/* ── MASTHEAD ── */
+.masthead {
+  text-align: center;
+  padding: 20px 40px 16px;
+  border-bottom: 4px double var(--rule);
+  background: var(--bg);
+}
+.masthead-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  font-family: 'Inter', sans-serif;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-bottom: 8px;
+}
+.masthead-title {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 56px;
+  font-weight: 900;
+  color: var(--text-bright);
+  letter-spacing: 1px;
+  line-height: 1.1;
+}
+.masthead-subtitle {
+  font-family: 'Source Serif 4', Georgia, serif;
+  font-style: italic;
+  font-size: 14px;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+/* ── TICKER ── */
+.ticker-wrap {
+  overflow: hidden;
+  background: var(--rule);
+  color: #faf8f5;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  padding: 6px 0;
+  white-space: nowrap;
+}
+.ticker {
+  display: inline-block;
+  animation: ticker 45s linear infinite;
+}
+.ticker span {
+  padding: 0 32px;
+}
+.ticker .dot {
+  color: var(--accent-red);
+  padding: 0 8px;
+}
+@keyframes ticker {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+/* ── STATS BAR ── */
+.stats-bar {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+.stat {
+  flex: 1;
+  text-align: center;
+  padding: 16px 12px;
+  border-right: 1px solid var(--border);
+}
+.stat:last-child { border-right: none; }
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  font-family: 'Playfair Display', Georgia, serif;
+  color: var(--text-bright);
+}
+.stat-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-top: 2px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 500;
+}
+
+/* ── SECTION HEADERS ── */
+.section-header {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ── TABS ── */
+.tab-bar {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid var(--rule);
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.tab {
+  padding: 12px 28px;
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  border-bottom: 3px solid transparent;
+  transition: all 0.15s ease;
+  margin-bottom: -2px;
+}
+.tab:hover { color: var(--text-bright); }
+.tab.active {
+  color: var(--text-bright);
+  border-bottom-color: var(--rule);
+}
+
+.tab-content {
+  display: none;
+  padding: 32px 40px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
 .tab-content.active { display: block; }
+#tab-graph.active { max-width: none; padding: 0; }
 
-/* Cards */
-.card { background: #141414; border: 1px solid #1f1f1f; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
-.card h3 { font-size: 14px; margin-bottom: 8px; line-height: 1.4; }
-.card p { color: #737373; font-size: 13px; line-height: 1.5; }
-.card .meta { display: flex; gap: 12px; margin-top: 8px; font-size: 12px; color: #737373; }
+/* ── CARDS ── */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  padding: 24px;
+  margin-bottom: 16px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  position: relative;
+}
+.card:hover {
+  border-color: var(--border-dark);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.card h3 {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  line-height: 1.3;
+  color: var(--text-bright);
+}
+.card p {
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.75;
+}
+.card .meta {
+  display: flex;
+  gap: 12px;
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--text-dim);
+  align-items: center;
+  font-family: 'Inter', sans-serif;
+}
 
-/* Badges */
-.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
-.badge-triangle { background: #6ba36820; color: #6ba368; }
-.badge-v-structure { background: #c2707020; color: #c27070; }
-.badge-bridge { background: #7a9cc620; color: #7a9cc6; }
-.badge-walk { background: #c4956a20; color: #c4956a; }
-.badge-other { background: #8a8a8a20; color: #8a8a8a; }
+/* ── BADGES ── */
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  font-size: 10px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  border: 1px solid;
+}
+.badge-triangle { border-color: var(--accent-mint); color: var(--accent-mint); }
+.badge-v-structure { border-color: var(--accent-pink); color: var(--accent-pink); }
+.badge-bridge { border-color: var(--accent-blue); color: var(--accent-blue); }
+.badge-walk { border-color: var(--accent-violet); color: var(--accent-violet); }
+.badge-other { border-color: var(--text-dim); color: var(--text-dim); }
+.badge-residual { border-color: var(--accent-amber); color: var(--accent-amber); }
+.badge-cluster-boundary { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+.badge-void { border-color: var(--accent-coral); color: var(--accent-coral); }
+.badge-antipodal { border-color: var(--accent-violet); color: var(--accent-violet); }
 
-/* ELI5 */
-.eli5 { background: #1a1a1a; border-left: 3px solid #c4956a; padding: 8px 12px; margin: 8px 0; font-size: 13px; color: #c4956a; }
+.badge-status {
+  padding: 3px 10px;
+  font-size: 10px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  border: 1px solid;
+}
+.badge-pending { border-color: var(--accent-amber); color: var(--accent-amber); background: rgba(154,122,42,0.06); }
+.badge-accepted { border-color: var(--accent-mint); color: var(--accent-mint); background: rgba(42,122,74,0.06); }
+.badge-rejected { border-color: var(--accent-coral); color: var(--accent-coral); background: rgba(196,78,62,0.06); }
 
-/* Score */
-.score { font-size: 24px; font-weight: 700; color: #e5e5e5; }
-.score-label { font-size: 11px; color: #737373; text-transform: uppercase; letter-spacing: 1px; }
+/* ── ELI5 — pull quote ── */
+.eli5 {
+  border-top: 2px solid var(--rule);
+  border-bottom: 2px solid var(--rule);
+  padding: 16px 0;
+  margin: 20px 0;
+  font-size: 15px;
+  font-style: normal;
+  color: var(--text-bright);
+  line-height: 1.6;
+  text-align: center;
+  font-family: 'Inter', -apple-system, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
 
-/* Search */
-.search-input { width: 100%; padding: 12px 16px; background: #141414; border: 1px solid #1f1f1f; border-radius: 8px; color: #e5e5e5; font-size: 14px; outline: none; margin-bottom: 16px; }
-.search-input:focus { border-color: #737373; }
-.search-input::placeholder { color: #737373; }
+/* ── SCORE ── */
+.score {
+  font-size: 32px;
+  font-weight: 700;
+  font-family: 'Playfair Display', Georgia, serif;
+  color: var(--text-bright);
+}
+.score-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  font-family: 'Inter', sans-serif;
+}
 
-/* Graph */
-#graph-container { width: 100%; height: calc(100vh - 100px); }
-#graph-container svg { width: 100%; height: 100%; }
-.node-label { font-size: 10px; fill: #737373; pointer-events: none; }
-.legend { position: absolute; bottom: 24px; left: 24px; background: #141414; border: 1px solid #1f1f1f; border-radius: 8px; padding: 12px; font-size: 12px; }
-.legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-.legend-shape { width: 12px; height: 12px; }
+/* ── SEARCH ── */
+.search-input {
+  width: 100%;
+  padding: 14px 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  color: var(--text-bright);
+  font-size: 15px;
+  font-family: 'Source Serif 4', Georgia, serif;
+  outline: none;
+  margin-bottom: 16px;
+  transition: border-color 0.15s ease;
+}
+.search-input:focus {
+  border-color: var(--rule);
+}
+.search-input::placeholder { color: var(--text-dim); }
 
-/* Review buttons */
-.review-actions { display: flex; gap: 8px; margin-top: 12px; }
-.btn { padding: 8px 20px; border: 1px solid #1f1f1f; border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.2s; background: transparent; }
-.btn-accept { color: #6ba368; border-color: #6ba368; }
-.btn-accept:hover { background: #6ba36820; }
-.btn-reject { color: #c27070; border-color: #c27070; }
-.btn-reject:hover { background: #c2707020; }
+select {
+  padding: 14px 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  color: var(--text-bright);
+  font-size: 14px;
+  font-family: 'Source Serif 4', Georgia, serif;
+  outline: none;
+  cursor: pointer;
+}
 
-/* Stats bar */
-.stats-bar { display: flex; gap: 24px; padding: 16px 24px; border-bottom: 1px solid #1f1f1f; }
-.stat { text-align: center; }
-.stat-value { font-size: 20px; font-weight: 700; }
-.stat-label { font-size: 11px; color: #737373; text-transform: uppercase; letter-spacing: 1px; }
+/* ── GRAPH ── */
+#graph-container { width: 100%; height: calc(100vh - 100px); position: relative; overflow: hidden; }
+#graph-container svg { width: 100%; height: 100%; display: block; background: var(--bg-warm); }
+.legend {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  padding: 12px 18px;
+  font-size: 11px;
+  font-family: 'Inter', sans-serif;
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 10px;
+}
 
-/* Filters */
-.filters { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
-.filter-btn { padding: 4px 12px; border: 1px solid #1f1f1f; border-radius: 16px; cursor: pointer; font-size: 12px; color: #737373; background: transparent; transition: all 0.2s; }
-.filter-btn:hover, .filter-btn.active { color: #e5e5e5; border-color: #e5e5e5; }
+/* ── REVIEW BUTTONS ── */
+.review-actions { display: flex; gap: 10px; margin-top: 16px; }
+.btn {
+  padding: 10px 20px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 13px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  transition: all 0.15s ease;
+  background: transparent;
+}
+.btn:hover { border-color: var(--rule); }
+.btn-accept { color: var(--accent-mint); border-color: var(--accent-mint); }
+.btn-accept:hover { background: rgba(42,122,74,0.06); }
+.btn-reject { color: var(--accent-coral); border-color: var(--accent-coral); }
+.btn-reject:hover { background: rgba(196,78,62,0.06); }
 
-/* Molecule grid */
-.mol-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
+/* ── FILTERS ── */
+.filters { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+.filter-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: transparent;
+  transition: all 0.15s ease;
+  font-family: 'Inter', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.filter-btn:hover { color: var(--text-bright); border-color: var(--rule); }
+.filter-btn.active {
+  color: var(--bg);
+  background: var(--rule);
+  border-color: var(--rule);
+}
 
-/* Atom pills */
-.atom-pill { display: inline-block; padding: 2px 8px; margin: 2px; border-radius: 4px; font-size: 11px; background: #1f1f1f; color: #737373; }
+/* ── MOLECULE GRID ── */
+.mol-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  gap: 16px;
+}
 
-/* Community colors */
-.community-0 { color: #6ba368; } .community-1 { color: #c4956a; }
-.community-2 { color: #7a9cc6; } .community-3 { color: #c27070; }
-.community-4 { color: #9b8ec4; } .community-5 { color: #6ab0a3; }
-.community-6 { color: #c4a74e; } .community-7 { color: #8a8a8a; }
+/* ── ATOM PILLS ── */
+.atom-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  margin: 2px;
+  font-size: 11px;
+  font-family: 'Inter', sans-serif;
+  background: rgba(26,20,16,0.04);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+}
 
-/* Detail panel */
+/* ── DETAIL PANEL ── */
 .detail-panel {
-  position: fixed; right: 0; top: 0; width: 400px; height: 100vh;
-  background: #141414; border-left: 1px solid #1f1f1f; padding: 24px;
-  overflow-y: auto; z-index: 200; transform: translateX(100%);
-  transition: transform 0.2s ease;
+  position: fixed;
+  right: 0;
+  top: 0;
+  width: 460px;
+  height: 100vh;
+  background: var(--bg-card);
+  border-left: 2px solid var(--rule);
+  padding: 32px;
+  overflow-y: auto;
+  z-index: 200;
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
 }
 .detail-panel.open { transform: translateX(0); }
-.detail-panel h2 { font-size: 16px; margin-bottom: 12px; line-height: 1.4; }
-.detail-panel .body { color: #a3a3a3; font-size: 14px; line-height: 1.7; margin-bottom: 16px; }
+.detail-panel h2 {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  line-height: 1.35;
+  color: var(--text-bright);
+}
+.detail-panel .body { color: var(--text); font-size: 15px; line-height: 1.8; margin-bottom: 20px; }
 .detail-panel .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
 .detail-panel .close-btn {
-  position: absolute; top: 12px; right: 16px; cursor: pointer;
-  color: #737373; font-size: 20px; background: none; border: none;
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 24px;
+  background: none;
+  border: none;
+  font-family: 'Inter', sans-serif;
+  transition: color 0.15s;
 }
-.detail-panel .close-btn:hover { color: #e5e5e5; }
-.detail-panel .neighbors { margin-top: 16px; }
-.detail-panel .neighbors h4 { font-size: 12px; color: #737373; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
-.detail-panel .neighbor-item { padding: 6px 0; font-size: 13px; color: #a3a3a3; border-bottom: 1px solid #1f1f1f; cursor: pointer; }
-.detail-panel .neighbor-item:hover { color: #e5e5e5; }
+.detail-panel .close-btn:hover { color: var(--text-bright); }
+.detail-panel .neighbors { margin-top: 24px; }
+.detail-panel .neighbors h4 {
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 12px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+}
+.detail-panel .neighbor-item {
+  padding: 10px 0;
+  font-size: 15px;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.detail-panel .neighbor-item:hover { color: var(--accent-blue); }
+
+/* ── IDEA LAB ── */
+.lab-method-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  text-align: center;
+  padding: 24px 16px;
+  transition: all 0.15s ease;
+}
+.lab-method-card:hover {
+  border-color: var(--rule);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.lab-method-card .icon {
+  font-size: 24px;
+  margin-bottom: 8px;
+  opacity: 0.7;
+}
+.lab-method-card .method-title {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  color: var(--text-bright);
+}
+.lab-method-card .method-desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-family: 'Inter', sans-serif;
+}
+
+/* ── DROP CAP ── */
+.drop-cap::first-letter {
+  float: left;
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 58px;
+  font-weight: 900;
+  line-height: 0.8;
+  margin: 4px 10px 0 0;
+  color: var(--text-bright);
+}
+
+/* ── HORIZONTAL RULES ── */
+hr.thin { border: none; border-top: 1px solid var(--border); margin: 24px 0; }
+hr.thick { border: none; border-top: 2px solid var(--rule); margin: 24px 0; }
+hr.double { border: none; border-top: 4px double var(--rule); margin: 24px 0; }
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(26,20,16,0.12); }
+::-webkit-scrollbar-thumb:hover { background: rgba(26,20,16,0.25); }
+
+/* ── FOOTER ── */
+.footer {
+  border-top: 2px solid var(--rule);
+  padding: 12px 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  font-family: 'Inter', sans-serif;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  background: var(--bg);
+}
 </style>
 </head>
 <body>
 
-<div class="stats-bar" id="stats-bar"></div>
+<!-- Masthead -->
+<div class="masthead">
+  <div class="masthead-top">
+    <span id="masthead-vol"></span>
+    <span id="masthead-date"></span>
+    <span id="masthead-edition"></span>
+  </div>
+  <div style="display:inline-flex;align-items:center;gap:14px;">
+    <svg width="38" height="48" viewBox="0 0 38 48" fill="none">
+      <circle cx="19" cy="18" r="16" fill="#e8930a" opacity="0.12"/>
+      <circle cx="19" cy="18" r="10" fill="#e8930a" opacity="0.08"/>
+      <path d="M19 2C11.3 2 5 8.3 5 16c0 5.2 2.8 9.7 7 12.1V32c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2v-3.9c4.2-2.4 7-6.9 7-12.1 0-7.7-6.3-14-14-14z" stroke="#1a1410" stroke-width="1.8" fill="none"/>
+      <path d="M15 16c0-2.2 1.8-4 4-4s4 1.8 4 4" stroke="#1a1410" stroke-width="1.2" fill="none"/>
+      <line x1="19" y1="16" x2="19" y2="24" stroke="#1a1410" stroke-width="1.2"/>
+      <path d="M19 4C12.4 4 7 9.4 7 16c0 4.4 2.4 8.3 6 10.4V30h12v-3.6c3.6-2.1 6-6 6-10.4 0-6.6-5.4-12-12-12z" fill="#e8930a" opacity="0.15"/>
+      <rect x="13" y="34" width="12" height="2" rx="1" stroke="#1a1410" stroke-width="1.2" fill="none"/>
+      <rect x="14" y="37" width="10" height="2" rx="1" stroke="#1a1410" stroke-width="1.2" fill="none"/>
+      <path d="M16 40h6v2c0 1.1-.9 2-2 2h-2c-1.1 0-2-.9-2-2v-2z" stroke="#1a1410" stroke-width="1.2" fill="none"/>
+    </svg>
+    <div class="masthead-title">Eureka</div>
+  </div>
+</div>
 
+<!-- Ticker -->
+<div class="ticker-wrap">
+  <div class="ticker" id="ticker">
+    <span>Loading...</span>
+  </div>
+</div>
+
+
+<!-- Tabs -->
 <div class="tab-bar">
   <div class="tab active" data-tab="graph">Graph</div>
   <div class="tab" data-tab="search">Search</div>
   <div class="tab" data-tab="molecules">Molecules</div>
   <div class="tab" data-tab="review">Review</div>
+  <div class="tab" data-tab="lab">Idea Lab</div>
 </div>
 
 <!-- Graph Tab -->
 <div class="tab-content active" id="tab-graph">
   <div id="graph-container">
-    <svg></svg>
+    <svg>
+      <defs>
+        <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur"/>
+          <feMerge>
+            <feMergeNode in="blur"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+      </defs>
+    </svg>
   </div>
   <div class="legend" id="legend"></div>
 </div>
 
 <!-- Search Tab -->
 <div class="tab-content" id="tab-search">
-  <input type="text" class="search-input" id="search-input" placeholder="Search atoms by title, body, or tag..." autofocus>
-  <div class="filters" id="tag-filters" style="margin-bottom:12px;"></div>
+  <div class="section-header">Search the Brain</div>
+  <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;">
+    <input type="text" class="search-input" id="search-input" placeholder="Search atoms..." autofocus style="margin-bottom:0;flex:1;">
+    <select id="source-filter" style="min-width:180px;">
+      <option value="">All sources</option>
+    </select>
+  </div>
   <div id="search-results"></div>
 </div>
 
 <!-- Molecules Tab -->
 <div class="tab-content" id="tab-molecules">
-  <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+  <div class="section-header">Molecules</div>
+  <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
     <div class="filters" id="mol-filters" style="margin-bottom:0;flex:1;"></div>
     <div class="filters" id="mol-sort" style="margin-bottom:0;">
       <div class="filter-btn active" data-sort="score">Score</div>
@@ -146,8 +620,98 @@ body { background: #0a0a0a; color: #e5e5e5; font-family: 'Inter', -apple-system,
 
 <!-- Review Tab -->
 <div class="tab-content" id="tab-review">
-  <div id="review-count" style="margin-bottom:16px; color:#737373; font-size:13px;"></div>
+  <div class="section-header">Review</div>
+  <div id="review-count" style="margin-bottom:16px; color:var(--text-dim); font-size:12px; font-family:'Inter',sans-serif; letter-spacing:0.5px;"></div>
   <div id="review-cards"></div>
+</div>
+
+<!-- Idea Lab Tab -->
+<div class="tab-content" id="tab-lab">
+  <!-- Step 1: Pick an atom -->
+  <div id="lab-step1">
+    <div class="section-header">Idea Lab</div>
+    <h2 style="font-family:'Playfair Display',Georgia,serif;font-size:28px;margin-bottom:16px;">Start with an idea</h2>
+    <div style="display:flex;gap:10px;margin-bottom:16px;">
+      <input type="text" class="search-input" id="lab-search" placeholder="Search for an atom..." style="margin-bottom:0;flex:1;">
+      <select id="lab-source-filter" style="min-width:180px;">
+        <option value="">All sources</option>
+      </select>
+    </div>
+    <div id="lab-atom-results"></div>
+  </div>
+
+  <!-- Step 2: Choose method -->
+  <div id="lab-step2" style="display:none;">
+    <div class="section-header">Method Selection</div>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+      <h2 style="font-family:'Playfair Display',Georgia,serif;font-size:22px;margin:0;">Starting from:</h2>
+      <span id="lab-selected-atom" style="font-size:17px;color:var(--text-bright);font-family:'Playfair Display',Georgia,serif;font-style:italic;"></span>
+      <button id="lab-change-atom" class="btn" style="padding:4px 12px;font-size:11px;">Change</button>
+    </div>
+    <p style="color:var(--text-dim);margin-bottom:16px;font-size:14px;font-family:'Inter',sans-serif;">How do you want to explore?</p>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;" id="lab-methods">
+      <div class="lab-method-card" data-method="triangle">
+        <div class="icon">&#9651;</div>
+        <div class="method-title">Trio</div>
+        <div class="method-desc">Find 3 atoms that resonate together</div>
+      </div>
+      <div class="lab-method-card" data-method="walk">
+        <div class="icon">&#10551;</div>
+        <div class="method-title">Journey</div>
+        <div class="method-desc">Walk through connected ideas</div>
+      </div>
+      <div class="lab-method-card" data-method="antipodal">
+        <div class="icon">&#8596;</div>
+        <div class="method-title">Opposites</div>
+        <div class="method-desc">Bridge the furthest idea</div>
+      </div>
+      <div class="lab-method-card" data-method="cluster-boundary">
+        <div class="icon">&#9673;</div>
+        <div class="method-title">Frontier</div>
+        <div class="method-desc">Ideas at the edge of this topic</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 3: Browse candidates (for Trio, Opposites, Frontier) -->
+  <div id="lab-step3" style="display:none;">
+    <div class="section-header">Candidates</div>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;">
+      <h2 style="font-family:'Playfair Display',Georgia,serif;font-size:22px;margin:0;">Pick your combination</h2>
+      <button id="lab-back-method" class="btn" style="padding:4px 12px;font-size:11px;">Back</button>
+    </div>
+    <p style="color:var(--text-dim);margin-bottom:20px;font-size:14px;" id="lab-method-desc"></p>
+    <div id="lab-candidates" style="margin-bottom:20px;"></div>
+  </div>
+
+  <!-- Step 3b: Journey walker (step-by-step) -->
+  <div id="lab-walk" style="display:none;">
+    <div class="section-header">Journey</div>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+      <h2 style="font-family:'Playfair Display',Georgia,serif;font-size:22px;margin:0;">Build your path</h2>
+      <button id="lab-walk-back" class="btn" style="padding:4px 12px;font-size:11px;">Back</button>
+    </div>
+
+    <!-- Current path -->
+    <div id="lab-walk-path" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:24px;padding:16px;background:var(--bg-card);border:1px solid var(--border);"></div>
+
+    <!-- Next step options -->
+    <p style="color:var(--text-dim);margin-bottom:12px;font-size:14px;font-family:'Inter',sans-serif;">Where do you want to go next?</p>
+    <div id="lab-walk-options" style="margin-bottom:20px;"></div>
+
+    <!-- Generate button (visible when path >= 3) -->
+    <div id="lab-walk-generate" style="display:none;margin-top:16px;">
+      <button class="btn btn-accept" id="lab-walk-gen-btn" style="font-size:15px;padding:14px 28px;">Generate molecule from this path</button>
+    </div>
+  </div>
+
+  <!-- Step 4: Generate -->
+  <div id="lab-step4" style="display:none;">
+    <div class="section-header">Generated Molecule</div>
+    <h2 style="font-family:'Playfair Display',Georgia,serif;font-size:22px;margin-bottom:14px;">Your molecule</h2>
+    <div id="lab-generating" style="display:none;color:var(--text-dim);font-style:italic;padding:20px 0;">Generating synthesis...</div>
+    <div id="lab-result"></div>
+  </div>
 </div>
 
 <!-- Detail Panel -->
@@ -162,16 +726,28 @@ body { background: #0a0a0a; color: #e5e5e5; font-family: 'Inter', -apple-system,
   </div>
 </div>
 
-<script>
-const COLORS = ['#6ba368','#c4956a','#7a9cc6','#c27070','#9b8ec4','#6ab0a3','#c4a74e','#8a8a8a'];
+<!-- Footer -->
+<div class="footer" id="footer">
+  <span>Eureka</span>
+  <span id="footer-stats"></span>
+</div>
 
-// HTML escape to prevent XSS
+<script>
+const COLORS = ['#e07040','#2b9e6e','#8855cc','#e0a020','#3388cc','#cc4466','#30b088','#cc7722'];
+
 function esc(s) {
   if (!s) return '';
   const d = document.createElement('div');
   d.textContent = s;
   return d.innerHTML;
 }
+
+// Masthead date
+const now = new Date();
+const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+document.getElementById('masthead-date').textContent =
+  days[now.getDay()] + ', ' + months[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear();
 
 // Tab switching
 document.querySelectorAll('.tab').forEach(tab => {
@@ -183,20 +759,46 @@ document.querySelectorAll('.tab').forEach(tab => {
     if (tab.dataset.tab === 'graph') initGraph();
     if (tab.dataset.tab === 'molecules') loadMolecules();
     if (tab.dataset.tab === 'review') loadReview();
+    if (tab.dataset.tab === 'lab') labSearch('');
   });
 });
 
 // Stats
 async function loadStats() {
   const data = await fetch('/api/stats').then(r => r.json());
-  document.getElementById('stats-bar').innerHTML = `
-    <div class="stat"><div class="stat-value">${data.atoms||0}</div><div class="stat-label">Atoms</div></div>
-    <div class="stat"><div class="stat-value">${data.molecules?.total||0}</div><div class="stat-label">Molecules</div></div>
-    <div class="stat"><div class="stat-value">${data.sources||0}</div><div class="stat-label">Sources</div></div>
-    <div class="stat"><div class="stat-value">${data.edges||0}</div><div class="stat-label">Edges</div></div>
-    <div class="stat"><div class="stat-value">${data.molecules?.pending||0}</div><div class="stat-label">Pending</div></div>
-  `;
+  const atoms = data.atoms || 0;
+  const mols = data.molecules?.total || 0;
+  const sources = data.sources || 0;
+  const edges = data.edges || 0;
+  const pending = data.molecules?.pending || 0;
+
+  // Masthead edition
+  document.getElementById('masthead-vol').textContent = atoms + ' atoms indexed';
+  document.getElementById('masthead-edition').textContent = pending + ' pending review';
+
+  // Footer
+  document.getElementById('footer-stats').textContent =
+    atoms + ' Atoms \u00b7 ' + mols + ' Molecules \u00b7 ' + edges + ' Edges';
+
+  // Ticker
+  buildTicker(data);
 }
+
+function buildTicker(stats) {
+  const items = [];
+  if (stats.atoms) items.push(stats.atoms + ' atoms in the knowledge graph');
+  if (stats.molecules?.total) items.push(stats.molecules.total + ' molecules synthesized');
+  if (stats.molecules?.pending) items.push(stats.molecules.pending + ' molecules awaiting review');
+  if (stats.sources) items.push(stats.sources + ' sources ingested');
+  if (stats.edges) items.push(stats.edges + ' connections mapped');
+  items.push('Use the Idea Lab to discover new connections');
+  items.push('Review pending molecules to strengthen the brain');
+
+  const dot = '<span class="dot">\u25cf</span>';
+  const text = items.map(i => '<span>' + i + '</span>').join(dot);
+  document.getElementById('ticker').innerHTML = text + dot + text;
+}
+
 loadStats();
 
 // Graph
@@ -207,114 +809,181 @@ async function initGraph() {
   const data = await fetch('/api/graph').then(r => r.json());
   const container = document.getElementById('graph-container');
   const width = container.clientWidth, height = container.clientHeight;
-  const svg = d3.select('#graph-container svg').attr('viewBox', [0, 0, width, height]);
+  const svg = d3.select('#graph-container svg')
+    .attr('width', width).attr('height', height)
+    .attr('viewBox', [0, 0, width, height]);
 
-  // Zoom + pan
   const g = svg.append('g');
   svg.call(d3.zoom()
-    .scaleExtent([0.1, 5])
+    .scaleExtent([0.2, 8])
     .on('zoom', (e) => g.attr('transform', e.transform)));
 
-  const simulation = d3.forceSimulation(data.nodes)
-    .force('link', d3.forceLink(data.edges).id(d => d.slug).distance(60))
-    .force('charge', d3.forceManyBody().strength(-80))
-    .force('center', d3.forceCenter(width/2, height/2))
-    .force('collision', d3.forceCollide(15))
-    .force('radial', d3.forceRadial(Math.min(width, height) * 0.35, width/2, height/2).strength(0.05));
-
-  const link = g.append('g').selectAll('line').data(data.edges).join('line')
-    .attr('stroke', '#1f1f1f').attr('stroke-width', 1);
-
-  const node = g.append('g').selectAll('g').data(data.nodes).join('g')
-    .call(d3.drag().on('start', dragstarted).on('drag', dragged).on('end', dragended));
-
-  // Draw shapes based on type
-  node.each(function(d) {
-    const g = d3.select(this);
-    const color = COLORS[d.community % COLORS.length] || COLORS[7];
-    if (d.type === 'atom') {
-      g.append('circle').attr('r', 6).attr('fill', color);
-    } else if (d.method === 'triangle') {
-      g.append('polygon').attr('points', '0,-8 7,5 -7,5').attr('fill', 'none').attr('stroke', color).attr('stroke-width', 2);
-    } else if (d.method === 'v-structure') {
-      g.append('text').text('V').attr('text-anchor', 'middle').attr('dy', 4).attr('fill', color).attr('font-size', 14).attr('font-weight', 700);
-    } else {
-      g.append('rect').attr('x', -5).attr('y', -5).attr('width', 10).attr('height', 10)
-        .attr('transform', 'rotate(45)').attr('fill', color);
-    }
+  const communityNames = {};
+  data.nodes.forEach(n => {
+    const c = n.community;
+    if (!(c in communityNames)) communityNames[c] = [];
+    communityNames[c].push(n);
   });
 
-  // Labels — use title, cap at 40 chars
-  node.append('text').text(d => {
-    const t = d.title || d.slug.replace(/-/g, ' ');
-    return t.length > 40 ? t.slice(0, 40) + '...' : t;
-  }).attr('class', 'node-label').attr('dx', 12).attr('dy', 4);
+  const simulation = d3.forceSimulation(data.nodes)
+    .force('link', d3.forceLink(data.edges).id(d => d.slug).distance(80).strength(0.3))
+    .force('charge', d3.forceManyBody().strength(-150))
+    .force('center', d3.forceCenter(width/2, height/2))
+    .force('collision', d3.forceCollide(20))
+    .force('x', d3.forceX(width/2).strength(0.03))
+    .force('y', d3.forceY(height/2).strength(0.03));
 
-  // Hover highlight
+  const link = g.append('g').selectAll('line').data(data.edges).join('line')
+    .attr('stroke', 'rgba(26,20,16,0.08)')
+    .attr('stroke-width', 0.8);
+
+  const hullGroup = g.append('g').attr('class', 'hulls');
+
+  const node = g.append('g').selectAll('g').data(data.nodes).join('g')
+    .style('cursor', 'pointer')
+    .call(d3.drag().on('start', dragstarted).on('drag', dragged).on('end', dragended));
+
+  node.each(function(d) {
+    const el = d3.select(this);
+    const color = COLORS[d.community % COLORS.length] || COLORS[7];
+    el.append('circle').attr('r', 14).attr('fill', color).attr('opacity', 0.06);
+    el.append('circle').attr('r', 8).attr('fill', color).attr('opacity', 0.18);
+    el.append('circle').attr('r', d.type === 'molecule' ? 4 : 5.5).attr('fill', color).attr('opacity', 0.9);
+  });
+
+  const tooltip = d3.select('#graph-container').append('div')
+    .style('position', 'absolute')
+    .style('pointer-events', 'none')
+    .style('background', 'rgba(255,255,255,0.96)')
+    .style('border', '1px solid ' + 'var(--border)')
+    .style('padding', '12px 16px')
+    .style('font-size', '14px')
+    .style('font-family', "'Playfair Display', Georgia, serif")
+    .style('color', 'var(--text-bright)')
+    .style('max-width', '280px')
+    .style('line-height', '1.5')
+    .style('box-shadow', '0 2px 8px rgba(0,0,0,0.06)')
+    .style('display', 'none')
+    .style('z-index', '300');
+
   node.on('mouseover', function(e, d) {
+    const color = COLORS[d.community % COLORS.length];
     const neighbors = new Set();
-    data.edges.forEach(l => { if (l.source.slug===d.slug) neighbors.add(l.target.slug); if (l.target.slug===d.slug) neighbors.add(l.source.slug); });
-    node.style('opacity', n => n.slug===d.slug || neighbors.has(n.slug) ? 1 : 0.15);
-    link.style('opacity', l => l.source.slug===d.slug || l.target.slug===d.slug ? 1 : 0.05);
-  }).on('mouseout', () => { node.style('opacity', 1); link.style('opacity', 1); });
+    data.edges.forEach(l => {
+      if (l.source.slug===d.slug) neighbors.add(l.target.slug);
+      if (l.target.slug===d.slug) neighbors.add(l.source.slug);
+    });
 
-  // Click — open detail panel
+    node.style('opacity', n => n.slug===d.slug || neighbors.has(n.slug) ? 1 : 0.08);
+    link.attr('stroke', l => (l.source.slug===d.slug || l.target.slug===d.slug) ? color : 'rgba(26,20,16,0.02)')
+      .attr('stroke-width', l => (l.source.slug===d.slug || l.target.slug===d.slug) ? 2 : 0.5);
+
+    const title = d.title || d.slug.replace(/-/g, ' ');
+    const neighborCount = neighbors.size;
+    tooltip.html(`<div style="margin-bottom:4px;font-weight:700;font-size:15px;">${esc(title)}</div>
+      <div style="color:var(--text-dim);font-family:'Inter',sans-serif;font-size:11px;text-transform:uppercase;letter-spacing:1px;">${neighborCount} connection${neighborCount !== 1 ? 's' : ''} &middot; ${d.type}</div>`)
+      .style('display', 'block');
+  })
+  .on('mousemove', function(e) {
+    tooltip.style('left', (e.offsetX + 18) + 'px').style('top', (e.offsetY - 10) + 'px');
+  })
+  .on('mouseout', () => {
+    node.style('opacity', 1);
+    link.attr('stroke', 'rgba(26,20,16,0.08)').attr('stroke-width', 0.8);
+    tooltip.style('display', 'none');
+  });
+
   node.on('click', (e, d) => {
     e.stopPropagation();
     openDetail(d.slug, data.edges);
   });
 
+  function updateHulls() {
+    hullGroup.selectAll('path').remove();
+    Object.keys(communityNames).forEach(c => {
+      const members = communityNames[c];
+      if (members.length < 3) return;
+      const points = members.map(d => [d.x, d.y]);
+      const hull = d3.polygonHull(points);
+      if (!hull) return;
+      const color = COLORS[c % COLORS.length];
+      hullGroup.append('path')
+        .attr('d', 'M' + hull.map(p => p.join(',')).join('L') + 'Z')
+        .attr('fill', color).attr('fill-opacity', 0.03)
+        .attr('stroke', color).attr('stroke-opacity', 0.08)
+        .attr('stroke-width', 1);
+    });
+  }
+
   simulation.on('tick', () => {
-    link.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y).attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
+    link.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y)
+      .attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
     node.attr('transform', d => `translate(${d.x},${d.y})`);
   });
+  simulation.on('end', updateHulls);
+  setTimeout(updateHulls, 3000);
 
   function dragstarted(e,d) { if(!e.active) simulation.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; }
   function dragged(e,d) { d.fx=e.x; d.fy=e.y; }
   function dragended(e,d) { if(!e.active) simulation.alphaTarget(0); d.fx=null; d.fy=null; }
 
   // Legend
-  document.getElementById('legend').innerHTML = `
-    <div class="legend-item"><svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="#e5e5e5"/></svg> Atom</div>
-    <div class="legend-item"><svg width="12" height="12"><polygon points="6,1 11,11 1,11" fill="none" stroke="#e5e5e5" stroke-width="1.5"/></svg> Triangle</div>
-    <div class="legend-item"><svg width="12" height="12"><text x="6" y="10" text-anchor="middle" fill="#e5e5e5" font-size="11" font-weight="700">V</text></svg> V-structure</div>
-    <div class="legend-item"><svg width="12" height="12"><rect x="2" y="2" width="8" height="8" transform="rotate(45,6,6)" fill="#e5e5e5"/></svg> Other molecule</div>
-  `;
+  const legendEl = document.getElementById('legend');
+  const communityIds = Object.keys(communityNames).sort((a,b) => communityNames[b].length - communityNames[a].length);
+  const stopWords = new Set(['the','a','an','is','are','was','were','be','been','being','and','or','but','not','no','in','on','at','to','for','of','with','by','from','as','into','that','which','who','what','how','your','you','its','it','this','than','when','can','do','does','dont','has','have','will','would','should','could','all','each','every','most','more','than','through','about','between','over','under','after','before','only','just','also','up','out','if','then','so','because','while','during','without','within','both','own','any','same','other','such','much','too','very','new','old','own','their','our','his','her','my','we','they','he','she','them','us','me','i']);
+  legendEl.innerHTML = communityIds.slice(0, 6).map(c => {
+    const color = COLORS[c % COLORS.length];
+    const members = communityNames[c];
+    const words = {};
+    members.forEach(n => {
+      const t = (n.title || n.slug.replace(/-/g, ' ')).toLowerCase();
+      t.split(/\s+/).forEach(w => {
+        w = w.replace(/[^a-z]/g, '');
+        if (w.length > 3 && !stopWords.has(w)) words[w] = (words[w]||0) + 1;
+      });
+    });
+    const topWords = Object.entries(words).sort((a,b) => b[1]-a[1]).slice(0, 2).map(e => e[0]);
+    const label = topWords.length ? topWords.join(' & ') : 'cluster ' + c;
+    return `<div class="legend-item">
+      <svg width="8" height="8"><circle cx="4" cy="4" r="4" fill="${color}"/></svg>
+      <span>${label} (${members.length})</span>
+    </div>`;
+  }).join('');
 }
 initGraph();
 
 // Search
 let searchTimeout;
-let activeTag = '';
+let activeSource = '';
+let sourcesLoaded = false;
+
 document.getElementById('search-input').addEventListener('input', e => {
   clearTimeout(searchTimeout);
-  activeTag = '';
-  document.querySelectorAll('#tag-filters .filter-btn').forEach(b => b.classList.remove('active'));
-  const allBtn = document.querySelector('#tag-filters .filter-btn[data-tag=""]');
-  if (allBtn) allBtn.classList.add('active');
-  searchTimeout = setTimeout(() => doSearch(e.target.value), 300);
+  searchTimeout = setTimeout(() => doSearch(e.target.value, activeSource), 300);
 });
 
-async function doSearch(q, tag) {
+document.getElementById('source-filter').addEventListener('change', e => {
+  activeSource = e.target.value;
+  doSearch(document.getElementById('search-input').value, activeSource);
+});
+
+async function doSearch(q, sourceId) {
   let url = '/api/search?';
-  if (tag) url += 'tag=' + encodeURIComponent(tag);
-  else if (q && q.trim()) url += 'q=' + encodeURIComponent(q);
+  const params = [];
+  if (q && q.trim()) params.push('q=' + encodeURIComponent(q));
+  if (sourceId) params.push('source=' + encodeURIComponent(sourceId));
+  url += params.join('&');
 
   const data = await fetch(url).then(r => r.json());
 
-  // Render tag filters (once)
-  if (data.tags && document.getElementById('tag-filters').children.length === 0) {
-    document.getElementById('tag-filters').innerHTML =
-      '<div class="filter-btn active" data-tag="">All</div>' +
-      (data.tags||[]).map(t => `<div class="filter-btn" data-tag="${esc(t)}">${esc(t)}</div>`).join('');
-    document.querySelectorAll('#tag-filters .filter-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('#tag-filters .filter-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        activeTag = btn.dataset.tag;
-        document.getElementById('search-input').value = '';
-        doSearch('', activeTag);
-      });
+  if (!sourcesLoaded && data.sources && data.sources.length > 0) {
+    sourcesLoaded = true;
+    const sel = document.getElementById('source-filter');
+    data.sources.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = s.title;
+      sel.appendChild(opt);
     });
   }
 
@@ -323,29 +992,43 @@ async function doSearch(q, tag) {
       <h3>${esc(r.title || r.slug.replace(/-/g, ' '))}</h3>
       <p>${esc(r.snippet || '')}${(r.snippet||'').length >= 200 ? '...' : ''}</p>
     </div>
-  `).join('') || '<p style="color:#737373">No results</p>';
+  `).join('') || '<p style="color:var(--text-dim);font-style:italic;">No results</p>';
 
-  // Click to open detail
   document.querySelectorAll('#search-results .card').forEach(card => {
     card.addEventListener('click', () => openDetail(card.dataset.slug));
   });
 }
-// Load all atoms + tags on first visit
 doSearch('');
 
 // Molecules
 let currentMolSort = 'score';
 let allMols = [];
 
+const METHOD_DISPLAY = {
+  'triangle': 'Trio', 'v-structure': 'Bridge',
+  'walk': 'Journey', 'bridge': 'Connector',
+  'residual': 'Hidden Gem', 'cluster-boundary': 'Frontier',
+  'void': 'Gap', 'antipodal': 'Opposites'
+};
+function methodName(method) { return METHOD_DISPLAY[method] || method; }
+function badgeClass(method) {
+  const map = {
+    'triangle': 'badge-triangle', 'v-structure': 'badge-v-structure',
+    'bridge': 'badge-bridge', 'walk': 'badge-walk',
+    'residual': 'badge-residual', 'cluster-boundary': 'badge-cluster-boundary',
+    'void': 'badge-void', 'antipodal': 'badge-antipodal'
+  };
+  return map[method] || 'badge-other';
+}
+
 async function loadMolecules() {
   const data = await fetch('/api/molecules').then(r => r.json());
   allMols = data.molecules || [];
 
-  // Method filters
   const methods = [...new Set(allMols.map(m => m.method))];
   document.getElementById('mol-filters').innerHTML =
     '<div class="filter-btn active" data-method="all">All</div>' +
-    methods.map(m => `<div class="filter-btn" data-method="${m}">${m}</div>`).join('');
+    methods.map(m => `<div class="filter-btn" data-method="${m}">${methodName(m)}</div>`).join('');
 
   document.querySelectorAll('#mol-filters .filter-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -355,7 +1038,6 @@ async function loadMolecules() {
     });
   });
 
-  // Sort buttons
   document.querySelectorAll('#mol-sort .filter-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('#mol-sort .filter-btn').forEach(b => b.classList.remove('active'));
@@ -377,57 +1059,50 @@ function renderMolecules(mols, method, sort) {
   else if (sort === 'alpha') filtered.sort((a,b) => a.slug.localeCompare(b.slug));
   else if (sort === 'shuffle') filtered.sort(() => Math.random() - 0.5);
 
-  document.getElementById('mol-grid').innerHTML = filtered.map(m => `
-    <div class="card" style="cursor:pointer" data-mol-slug="${esc(m.slug)}">
-      <div style="display:flex;justify-content:space-between;align-items:start;">
-        <h3 style="flex:1;">${esc(m.slug.replace(/-/g, ' '))}</h3>
-        <div><span class="score">${Math.round(m.score)}</span></div>
+  document.getElementById('mol-grid').innerHTML = filtered.map(m => {
+    const statusClass = m.review_status === 'accepted' ? 'badge-accepted' : m.review_status === 'rejected' ? 'badge-rejected' : 'badge-pending';
+    return `
+    <div class="card" data-mol-slug="${esc(m.slug)}">
+      <div style="display:flex;justify-content:space-between;align-items:start;gap:12px;">
+        <h3 style="flex:1;">${esc(m.title || m.slug.replace(/-/g, ' '))}</h3>
+        <div style="text-align:right;flex-shrink:0;">
+          <span class="score">${Math.round(m.score)}</span>
+        </div>
       </div>
       ${m.eli5 ? '<div class="eli5">' + esc(m.eli5) + '</div>' : ''}
+      <p style="white-space:pre-wrap;line-height:1.75;color:var(--text);margin-top:12px;font-size:14px;">${esc(m.body || '')}</p>
       <div class="meta">
-        <span class="badge badge-${m.method === 'v-structure' ? 'v-structure' : m.method === 'triangle' ? 'triangle' : 'other'}">${esc(m.method)}</span>
-        <span>${esc(m.review_status)}</span>
+        <span class="badge ${badgeClass(m.method)}">${esc(methodName(m.method))}</span>
+        <span class="badge-status ${statusClass}">${esc(m.review_status)}</span>
       </div>
-      <div class="mol-body" style="display:none; margin-top:12px; padding-top:12px; border-top:1px solid #1f1f1f;">
-        <p style="white-space:pre-wrap; line-height:1.6;">${esc(m.body || '')}</p>
-      </div>
-    </div>
-  `).join('') || '<p style="color:#737373">No molecules yet</p>';
-
-  // Toggle body on click
-  document.querySelectorAll('#mol-grid .card').forEach(card => {
-    card.addEventListener('click', () => {
-      const body = card.querySelector('.mol-body');
-      body.style.display = body.style.display === 'none' ? 'block' : 'none';
-    });
-  });
+    </div>`;
+  }).join('') || '<p style="color:var(--text-dim);font-style:italic;">No molecules yet</p>';
 }
 
 // Review
 async function loadReview() {
   const data = await fetch('/api/molecules').then(r => r.json());
   const pending = (data.molecules||[]).filter(m => m.review_status === 'pending');
-  document.getElementById('review-count').textContent = `${pending.length} pending review`;
+  document.getElementById('review-count').textContent = pending.length + ' molecules pending review';
   document.getElementById('review-cards').innerHTML = pending.map(m => {
     const safeSlug = esc(m.slug);
     return `
     <div class="card" id="review-${safeSlug}" data-slug="${safeSlug}">
-      <h3>${esc(m.slug.replace(/-/g, ' '))}</h3>
+      <h3>${esc(m.title || m.slug.replace(/-/g, ' '))}</h3>
       ${m.eli5 ? '<div class="eli5">' + esc(m.eli5) + '</div>' : ''}
-      <p>${esc(m.body||'')}</p>
+      <p style="white-space:pre-wrap;line-height:1.75;color:var(--text);margin-top:12px;font-size:14px;">${esc(m.body||'')}</p>
       <div class="meta">
-        <span class="badge badge-${m.method === 'v-structure' ? 'v-structure' : m.method === 'triangle' ? 'triangle' : 'other'}">${esc(m.method)}</span>
+        <span class="badge ${badgeClass(m.method)}">${esc(methodName(m.method))}</span>
         <span>Score: ${Math.round(m.score)}</span>
       </div>
       <div class="review-actions">
-        <button class="btn" style="color:#737373;border-color:#737373;" data-action="skip" data-slug="${safeSlug}">I already know this (s)</button>
+        <button class="btn" style="color:var(--text-dim);border-color:var(--border);" data-action="skip" data-slug="${safeSlug}">I already know this (s)</button>
         <button class="btn btn-accept" data-action="yes" data-slug="${safeSlug}">New &amp; interesting (y)</button>
         <button class="btn btn-reject" data-action="no" data-slug="${safeSlug}">Doesn't excite me (n)</button>
       </div>
     </div>`;
-  }).join('') || '<p style="color:#737373">Nothing to review</p>';
+  }).join('') || '<p style="color:var(--text-dim);font-style:italic;">Nothing to review</p>';
 
-  // Bind review buttons via data attributes instead of inline onclick
   document.querySelectorAll('#review-cards .btn').forEach(btn => {
     btn.addEventListener('click', () => reviewMolecule(btn.dataset.slug, btn.dataset.action));
   });
@@ -456,9 +1131,284 @@ async function reviewMolecule(slug, decision) {
   });
   document.getElementById('review-' + slug)?.remove();
   const remaining = document.querySelectorAll('#review-cards .card').length;
-  document.getElementById('review-count').textContent = `${remaining} pending review`;
+  document.getElementById('review-count').textContent = remaining + ' molecules pending review';
   loadStats();
 }
+
+// Idea Lab
+let labAtomSlug = '';
+let labAtomTitle = '';
+let labMethod = '';
+let labSourcesLoaded2 = false;
+
+let labSearchTimeout;
+document.getElementById('lab-search').addEventListener('input', e => {
+  clearTimeout(labSearchTimeout);
+  labSearchTimeout = setTimeout(() => labSearch(e.target.value), 300);
+});
+document.getElementById('lab-source-filter').addEventListener('change', e => {
+  labSearch(document.getElementById('lab-search').value);
+});
+
+async function labSearch(q) {
+  const sourceId = document.getElementById('lab-source-filter').value;
+  const params = [];
+  if (q && q.trim()) params.push('q=' + encodeURIComponent(q));
+  if (sourceId) params.push('source=' + encodeURIComponent(sourceId));
+  const data = await fetch('/api/search?' + params.join('&')).then(r => r.json());
+
+  if (!labSourcesLoaded2 && data.sources) {
+    labSourcesLoaded2 = true;
+    const sel = document.getElementById('lab-source-filter');
+    data.sources.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = s.title;
+      sel.appendChild(opt);
+    });
+  }
+
+  document.getElementById('lab-atom-results').innerHTML = (data.results||[]).map(r => `
+    <div class="card" style="cursor:pointer;" data-slug="${esc(r.slug)}" data-title="${esc(r.title||r.slug.replace(/-/g,' '))}">
+      <h3 style="font-size:17px;margin-bottom:4px;">${esc(r.title || r.slug.replace(/-/g, ' '))}</h3>
+      <p style="font-size:14px;">${esc((r.snippet||'').slice(0,120))}...</p>
+    </div>
+  `).join('') || '<p style="color:var(--text-dim);font-style:italic;">Search for an atom to start</p>';
+
+  document.querySelectorAll('#lab-atom-results .card').forEach(card => {
+    card.addEventListener('click', () => {
+      labAtomSlug = card.dataset.slug;
+      labAtomTitle = card.dataset.title;
+      document.getElementById('lab-selected-atom').textContent = labAtomTitle;
+      document.getElementById('lab-step1').style.display = 'none';
+      document.getElementById('lab-step2').style.display = 'block';
+      document.getElementById('lab-step3').style.display = 'none';
+      document.getElementById('lab-step4').style.display = 'none';
+    });
+  });
+}
+labSearch('');
+
+document.getElementById('lab-change-atom').addEventListener('click', () => {
+  document.getElementById('lab-step1').style.display = 'block';
+  document.getElementById('lab-step2').style.display = 'none';
+  document.getElementById('lab-step3').style.display = 'none';
+  document.getElementById('lab-walk').style.display = 'none';
+  document.getElementById('lab-step4').style.display = 'none';
+});
+
+document.getElementById('lab-back-method').addEventListener('click', () => {
+  document.getElementById('lab-step2').style.display = 'block';
+  document.getElementById('lab-step3').style.display = 'none';
+  document.getElementById('lab-walk').style.display = 'none';
+  document.getElementById('lab-step4').style.display = 'none';
+});
+document.getElementById('lab-walk-back').addEventListener('click', () => {
+  document.getElementById('lab-step2').style.display = 'block';
+  document.getElementById('lab-walk').style.display = 'none';
+  document.getElementById('lab-step4').style.display = 'none';
+});
+
+// Journey walker state
+let walkPath = [];
+let walkTitles = {};
+
+async function walkLoadNeighbors(currentSlug) {
+  const exclude = walkPath.join(',');
+  const data = await fetch(`/api/neighbors?atom=${encodeURIComponent(currentSlug)}&exclude=${encodeURIComponent(exclude)}&limit=6`).then(r => r.json());
+  const neighbors = data.neighbors || [];
+
+  document.getElementById('lab-walk-options').innerHTML = neighbors.map(n => `
+    <div class="card" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;" data-slug="${esc(n.slug)}" data-title="${esc(n.title)}">
+      <h3 style="font-size:16px;margin:0;">${esc(n.title)}</h3>
+      <span style="font-size:12px;color:var(--text-dim);font-family:'Inter',sans-serif;">${(n.similarity * 100).toFixed(0)}% similar</span>
+    </div>
+  `).join('') || '<p style="color:var(--text-dim);">No more neighbors to explore.</p>';
+
+  document.querySelectorAll('#lab-walk-options .card').forEach(card => {
+    card.addEventListener('click', () => {
+      const slug = card.dataset.slug;
+      const title = card.dataset.title;
+      walkPath.push(slug);
+      walkTitles[slug] = title;
+      walkRenderPath();
+      walkLoadNeighbors(slug);
+    });
+  });
+}
+
+function walkRenderPath() {
+  document.getElementById('lab-walk-path').innerHTML = walkPath.map((slug, i) => {
+    const title = walkTitles[slug] || slug.replace(/-/g, ' ');
+    return (i > 0 ? '<span style="color:var(--text-dim);font-size:18px;">&rarr;</span>' : '')
+      + `<span style="display:inline-block;padding:6px 14px;font-size:14px;font-family:'Playfair Display',Georgia,serif;font-weight:600;${i === 0 ? 'background:var(--rule);color:var(--bg);' : 'border:1px solid var(--border);color:var(--text-bright);'}">${esc(title)}</span>`;
+  }).join('')
+    + `<button id="lab-walk-undo" style="margin-left:12px;background:none;border:1px solid var(--border);padding:4px 10px;cursor:pointer;color:var(--text-dim);font-family:'Inter',sans-serif;font-size:11px;">undo</button>`;
+
+  // Undo button
+  document.getElementById('lab-walk-undo').addEventListener('click', () => {
+    if (walkPath.length > 1) {
+      walkPath.pop();
+      walkRenderPath();
+      walkLoadNeighbors(walkPath[walkPath.length - 1]);
+    }
+  });
+
+  // Show generate button when path >= 3
+  document.getElementById('lab-walk-generate').style.display = walkPath.length >= 3 ? 'block' : 'none';
+}
+
+// Generate molecule from walk path
+document.getElementById('lab-walk-gen-btn').addEventListener('click', async () => {
+  document.getElementById('lab-step4').style.display = 'block';
+  document.getElementById('lab-generating').style.display = 'block';
+  document.getElementById('lab-result').innerHTML = '';
+
+  try {
+    const res = await fetch('/api/generate-molecule', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({atoms: walkPath})
+    });
+    const result = await res.json();
+    document.getElementById('lab-generating').style.display = 'none';
+
+    if (result.ok && result.molecule) {
+      const m = result.molecule;
+      document.getElementById('lab-result').innerHTML = `
+        <div class="card" style="border-left:3px solid var(--rule);">
+          <h3>${esc(m.title)}</h3>
+          <p style="white-space:pre-wrap;line-height:1.75;margin-top:12px;font-size:14px;">${esc(m.body)}</p>
+          ${m.eli5 ? '<div class="eli5">' + esc(m.eli5) + '</div>' : ''}
+          <div class="review-actions">
+            <button class="btn btn-accept" onclick="fetch('/api/review/${m.slug}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({decision:'yes'})}).then(()=>{this.parentElement.innerHTML='<p>Saved.</p>';loadStats();})">Keep</button>
+            <button class="btn btn-reject" onclick="fetch('/api/review/${m.slug}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({decision:'no'})}).then(()=>{this.parentElement.innerHTML='<p>Discarded.</p>';document.getElementById('lab-step4').style.display='none';loadStats();})">Discard</button>
+          </div>
+        </div>`;
+    } else {
+      document.getElementById('lab-result').innerHTML = `<p style="color:#9a3a5a;">Error: ${esc(result.error || 'Unknown error')}</p>`;
+    }
+  } catch (err) {
+    document.getElementById('lab-generating').style.display = 'none';
+    document.getElementById('lab-result').innerHTML = `<p style="color:#9a3a5a;">Error: ${esc(err.message)}</p>`;
+  }
+});
+
+const methodDescs = {
+  'triangle': 'Showing trios \u2014 groups of 3 atoms that resonate together with your starting idea.',
+  'antipodal': 'Showing opposites \u2014 the most distant ideas that share a structural bridge with yours.',
+  'cluster-boundary': 'Showing frontiers \u2014 ideas at the edge of your topic, reaching into other clusters.'
+};
+
+document.querySelectorAll('#lab-methods .lab-method-card').forEach(card => {
+  card.addEventListener('click', async () => {
+    labMethod = card.dataset.method;
+
+    // Journey uses the walker
+    if (labMethod === 'walk') {
+      document.getElementById('lab-step2').style.display = 'none';
+      document.getElementById('lab-walk').style.display = 'block';
+      document.getElementById('lab-step3').style.display = 'none';
+      document.getElementById('lab-step4').style.display = 'none';
+      walkPath = [labAtomSlug];
+      walkTitles = {[labAtomSlug]: labAtomTitle};
+      walkRenderPath();
+      walkLoadNeighbors(labAtomSlug);
+      return;
+    }
+
+    // Other methods use pre-generated candidates
+    document.getElementById('lab-step2').style.display = 'none';
+    document.getElementById('lab-step3').style.display = 'block';
+    document.getElementById('lab-walk').style.display = 'none';
+    document.getElementById('lab-step4').style.display = 'none';
+    document.getElementById('lab-method-desc').textContent = methodDescs[labMethod] || '';
+    document.getElementById('lab-candidates').innerHTML = '<p style="color:var(--text-dim);font-style:italic;">Finding candidates...</p>';
+
+    const data = await fetch(`/api/discover/from?atom=${encodeURIComponent(labAtomSlug)}&method=${encodeURIComponent(labMethod)}`).then(r => r.json());
+    const candidates = data.candidates || [];
+
+    if (candidates.length === 0) {
+      document.getElementById('lab-candidates').innerHTML = '<p style="color:var(--text-dim);">No candidates found with this method. Try another.</p>';
+      return;
+    }
+
+    document.getElementById('lab-candidates').innerHTML = candidates.map((c, i) => {
+      const atomNames = c.atoms.map(s => c.atom_titles?.[s] || s.replace(/-/g, ' '));
+      return `<div class="card" style="cursor:pointer;" data-candidate-idx="${i}">
+        <div style="display:flex;justify-content:space-between;align-items:start;">
+          <div>
+            ${atomNames.map((name, j) => `<span style="display:inline-block;margin:3px 6px 3px 0;padding:3px 10px;font-size:12px;font-family:'Inter',sans-serif;border:1px solid var(--border);${c.atoms[j] === labAtomSlug ? 'background:var(--rule);color:var(--bg);font-weight:600;' : 'color:var(--text);'}">${esc(name)}</span>`).join(' + ')}
+          </div>
+          <span class="score" style="font-size:22px;">${Math.round(c.score||0)}</span>
+        </div>
+      </div>`;
+    }).join('');
+
+    window._labCandidates = candidates;
+
+    document.querySelectorAll('#lab-candidates .card').forEach(card => {
+      card.addEventListener('click', async () => {
+        const idx = parseInt(card.dataset.candidateIdx);
+        const candidate = window._labCandidates[idx];
+        if (!candidate) return;
+
+        document.getElementById('lab-step4').style.display = 'block';
+        document.getElementById('lab-generating').style.display = 'block';
+        document.getElementById('lab-result').innerHTML = '';
+
+        document.querySelectorAll('#lab-candidates .card').forEach(c => c.style.borderColor = 'var(--border)');
+        card.style.borderColor = 'var(--rule)';
+        card.style.borderWidth = '2px';
+
+        try {
+          const res = await fetch('/api/generate-molecule', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({atoms: candidate.atoms})
+          });
+          const result = await res.json();
+          document.getElementById('lab-generating').style.display = 'none';
+
+          if (result.ok && result.molecule) {
+            const m = result.molecule;
+            document.getElementById('lab-result').innerHTML = `
+              <div class="card" style="border-left:3px solid var(--rule);">
+                <h3>${esc(m.title)}</h3>
+                ${m.eli5 ? '<div class="eli5">' + esc(m.eli5) + '</div>' : ''}
+                <p style="white-space:pre-wrap;line-height:1.75;margin-top:12px;font-size:14px;">${esc(m.body)}</p>
+                <div class="review-actions">
+                  <button class="btn btn-accept" id="lab-accept">Keep this molecule (y)</button>
+                  <button class="btn btn-reject" id="lab-reject">Discard (n)</button>
+                  <button class="btn" id="lab-retry" style="color:var(--text-dim);border-color:var(--border);">Try again</button>
+                </div>
+              </div>`;
+
+            document.getElementById('lab-accept').addEventListener('click', async () => {
+              await fetch('/api/review/' + m.slug, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({decision:'yes'})});
+              document.getElementById('lab-result').innerHTML = '<p style="color:var(--accent-mint);font-size:15px;padding:20px 0;">Molecule saved to the brain.</p>';
+              loadStats();
+            });
+            document.getElementById('lab-reject').addEventListener('click', async () => {
+              await fetch('/api/review/' + m.slug, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({decision:'no'})});
+              document.getElementById('lab-result').innerHTML = '<p style="color:var(--text-dim);font-size:15px;padding:20px 0;">Discarded. Pick another combination above.</p>';
+              document.getElementById('lab-step4').style.display = 'none';
+              loadStats();
+            });
+            document.getElementById('lab-retry').addEventListener('click', () => {
+              card.click();
+            });
+          } else {
+            document.getElementById('lab-result').innerHTML = `<p style="color:var(--accent-coral);">Error: ${esc(result.error || 'Unknown error')}</p>`;
+          }
+        } catch (err) {
+          document.getElementById('lab-generating').style.display = 'none';
+          document.getElementById('lab-result').innerHTML = `<p style="color:var(--accent-coral);">Error: ${esc(err.message)}</p>`;
+        }
+      });
+    });
+  });
+});
 
 // Detail panel
 const detailPanel = document.getElementById('detail-panel');
@@ -476,16 +1426,15 @@ async function openDetail(slug, edges) {
   let bodyHtml = esc(data.body || '');
   if (data.type === 'molecule') {
     bodyHtml = (data.eli5 ? '<div class="eli5">' + esc(data.eli5) + '</div>' : '')
-      + '<p style="margin-top:12px;white-space:pre-wrap;">' + esc(data.body || '') + '</p>'
-      + '<div class="meta" style="margin-top:8px;"><span class="badge badge-' + (data.method === 'triangle' ? 'triangle' : data.method === 'v-structure' ? 'v-structure' : 'other') + '">' + esc(data.method || '') + '</span>'
-      + '<span>Score: ' + Math.round(data.score || 0) + '</span></div>';
+      + '<p style="white-space:pre-wrap;line-height:1.8;font-size:14px;">' + esc(data.body || '') + '</p>'
+      + '<div class="meta" style="margin-top:10px;"><span class="badge ' + badgeClass(data.method || '') + '">' + esc(methodName(data.method || '')) + '</span>'
+      + '<span style="font-family:Inter,sans-serif;font-size:12px;">Score: ' + Math.round(data.score || 0) + '</span></div>';
   }
   document.getElementById('detail-body').innerHTML = data.type === 'molecule' ? bodyHtml : '<p>' + bodyHtml + '</p>';
 
   document.getElementById('detail-tags').innerHTML = (data.tags || [])
     .map(t => '<span class="atom-pill">' + esc(t) + '</span>').join('');
 
-  // Find neighbors from edges
   const neighbors = new Set();
   (edges || []).forEach(e => {
     const s = typeof e.source === 'object' ? e.source.slug : e.source;
@@ -496,9 +1445,8 @@ async function openDetail(slug, edges) {
 
   document.getElementById('detail-neighbors').innerHTML = [...neighbors]
     .map(n => `<div class="neighbor-item" data-slug="${esc(n)}">${esc(n.replace(/-/g, ' '))}</div>`)
-    .join('') || '<p style="color:#737373;font-size:13px">No connections</p>';
+    .join('') || '<p style="color:var(--text-dim);font-size:13px;font-style:italic;">No connections</p>';
 
-  // Click neighbor to navigate
   document.querySelectorAll('#detail-neighbors .neighbor-item').forEach(item => {
     item.addEventListener('click', () => openDetail(item.dataset.slug, edges));
   });

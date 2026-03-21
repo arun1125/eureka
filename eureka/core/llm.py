@@ -61,9 +61,41 @@ class KimiK2:
                     raise
 
 
+class Claude:
+    """Calls Claude via the Anthropic Messages API (stdlib only)."""
+
+    def __init__(self, api_key: str, model: str = "claude-haiku-4-5-20251001"):
+        self.api_key = api_key
+        self.model = model
+
+    def generate(self, prompt: str) -> str:
+        body = json.dumps({
+            "model": self.model,
+            "max_tokens": 4096,
+            "messages": [{"role": "user", "content": prompt}],
+        }).encode()
+
+        req = urllib.request.Request(
+            "https://api.anthropic.com/v1/messages",
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "x-api-key": self.api_key,
+                "anthropic-version": "2023-06-01",
+            },
+        )
+        resp = urllib.request.urlopen(req, timeout=120)
+        data = json.loads(resp.read().decode())
+        return data["content"][0]["text"].strip()
+
+
 def get_llm():
     """Return the default LLM client. Checks env vars for config."""
     import os
+    claude_key = os.environ.get("ANTHROPIC_API_KEY")
+    if claude_key:
+        model = os.environ.get("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
+        return Claude(claude_key, model=model)
     kimi_key = os.environ.get("KIMI_API_KEY") or os.environ.get("MOONSHOT_API_KEY")
     if kimi_key:
         return KimiK2(kimi_key)
