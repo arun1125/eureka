@@ -113,9 +113,9 @@ def find_v_structures(conn, embeddings, cap=20):
 
 # --- Method 3: Random walk ---
 
-def find_walks(conn, embeddings, n_walks=20, walk_length=4, cap=20):
-    """Random walk on the edge graph. Start at a random atom, walk N hops,
-    collect the start and end atoms. Distant but reachable = interesting."""
+def find_walks(conn, embeddings, n_walks=30, walk_length=6, cap=20):
+    """Random walk on the edge graph. Start at a random atom, walk N hops.
+    Generates both short (3-atom) and long (4-5 atom) molecules."""
     slugs = [s for s in _atom_slugs(conn) if s in embeddings]
     if len(slugs) < 3:
         return []
@@ -142,13 +142,25 @@ def find_walks(conn, embeddings, n_walks=20, walk_length=4, cap=20):
             if current not in path:
                 path.append(current)
 
-        if len(path) >= 3:
-            # Take start, middle, end
+        if len(path) >= 5:
+            # Long walk: take 4-5 evenly spaced atoms along the path
+            n = len(path)
+            indices = [0, n // 4, n // 2, 3 * n // 4, n - 1]
+            atoms = list(dict.fromkeys(path[i] for i in indices if i < n))  # dedupe preserving order
+            if len(atoms) >= 4:
+                key = tuple(sorted(atoms))
+                if key not in seen:
+                    seen.add(key)
+                    results.append({"atoms": atoms, "method": "walk"})
+                    if len(results) >= cap:
+                        return results
+        elif len(path) >= 3:
+            # Short walk: start, middle, end
             a, b, c = path[0], path[len(path) // 2], path[-1]
             key = tuple(sorted([a, b, c]))
             if key not in seen:
                 seen.add(key)
-                results.append({"atoms": list(key), "method": "walk"})
+                results.append({"atoms": [a, b, c], "method": "walk"})
                 if len(results) >= cap:
                     return results
 

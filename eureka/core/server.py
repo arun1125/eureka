@@ -40,19 +40,29 @@ def create_app(brain_dir: str) -> dict:
             elif path == "/api/graph":
                 conn = open_db(brain_dir)
                 try:
-                    # Only atoms in the graph — molecules live in their own tab
+                    # Atoms + molecules in the graph
                     all_slugs = []
                     slug_type = {}
+                    slug_method = {}
                     for row in conn.execute("SELECT slug FROM atoms"):
                         all_slugs.append(row["slug"])
                         slug_type[row["slug"]] = "atom"
+                    for row in conn.execute("SELECT slug, method FROM molecules"):
+                        all_slugs.append(row["slug"])
+                        slug_type[row["slug"]] = "molecule"
+                        slug_method[row["slug"]] = row["method"]
                     atom_set = set(all_slugs)
 
-                    # Collect edges (only between atoms)
+                    # Collect atom-atom edges
                     edge_list = []
                     for row in conn.execute("SELECT source, target, similarity FROM edges"):
                         if row["source"] in atom_set and row["target"] in atom_set:
                             edge_list.append({"source": row["source"], "target": row["target"], "similarity": row["similarity"]})
+
+                    # Connect molecules to their constituent atoms
+                    for row in conn.execute("SELECT molecule_slug, atom_slug FROM molecule_atoms"):
+                        if row["molecule_slug"] in atom_set and row["atom_slug"] in atom_set:
+                            edge_list.append({"source": row["molecule_slug"], "target": row["atom_slug"], "similarity": 1.0})
 
                     # Community by primary tag (first tag on each atom)
                     community = {}
@@ -87,6 +97,8 @@ def create_app(brain_dir: str) -> dict:
                             "type": slug_type.get(slug, "atom"),
                             "community": community.get(slug, 0),
                         }
+                        if slug in slug_method:
+                            node["method"] = slug_method[slug]
                         nodes.append(node)
 
                     self._json_response({"nodes": nodes, "edges": edge_list})
