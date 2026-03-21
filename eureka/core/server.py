@@ -53,11 +53,17 @@ def create_app(brain_dir: str) -> dict:
                         slug_method[row["slug"]] = row["method"]
                     atom_set = set(all_slugs)
 
-                    # Collect atom-atom edges
+                    # Collect atom-atom edges (top 5 per atom for graph clarity)
+                    from collections import defaultdict
+                    edge_counts = defaultdict(int)
                     edge_list = []
-                    for row in conn.execute("SELECT source, target, similarity FROM edges"):
-                        if row["source"] in atom_set and row["target"] in atom_set:
-                            edge_list.append({"source": row["source"], "target": row["target"], "similarity": row["similarity"]})
+                    for row in conn.execute("SELECT source, target, similarity FROM edges ORDER BY similarity DESC"):
+                        s, t = row["source"], row["target"]
+                        if s in atom_set and t in atom_set:
+                            if edge_counts[s] < 5 and edge_counts[t] < 5:
+                                edge_list.append({"source": s, "target": t, "similarity": row["similarity"]})
+                                edge_counts[s] += 1
+                                edge_counts[t] += 1
 
                     # Connect molecules to their constituent atoms
                     for row in conn.execute("SELECT molecule_slug, atom_slug FROM molecule_atoms"):
