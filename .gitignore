@@ -9,3 +9,9 @@ build/
 .DS_Store
 .env*
 secrets/
+
+# Internal dev artifacts
+SPEC*.md
+UBIQUITOUS_LANGUAGE.md
+plans/
+docs/handoffs/
