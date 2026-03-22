@@ -2,13 +2,13 @@
 
 A CLI tool designed for AI agents to manage your second brain. You don't type these commands — your agent does.
 
-You give your agent access to eureka. It ingests your sources, extracts atomic ideas, links them by meaning, discovers connections you missed, and surfaces insights through a dashboard you actually interact with. The agent runs the CLI. You use the dashboard. That's it.
+You give your agent access to eureka. It ingests your sources, extracts atomic ideas, links them by meaning, discovers connections you missed, and synthesizes new insights. Then you talk to the agent about what it found — it can discuss, challenge, and build on the ideas using the full graph as context. The dashboard is there when you want to browse visually.
 
-**The agent operates. The math computes. You think.**
+**The agent operates. The agent synthesizes. The agent discusses. You think.**
 
 ## Why this exists
 
-No human evaluates 40,000 possible connections between 200 notes. No human should be typing `eureka discover --method void --count 20` into a terminal. Your agent does that. It feeds you the results through the dashboard, and you decide what's interesting.
+No human evaluates 40,000 possible connections between 200 notes. No human should be typing `eureka discover --method void --count 20` into a terminal. Your agent does that. Then you ask it "what did you find?" and it walks you through the interesting connections, pushes back on your assumptions, and helps you think through the implications.
 
 The quality of your thinking is a function of the input you feed it. Read one book on habits, you get a level 2 idea. Read habits AND mimetic desire AND systems thinking — and something holds all of that at once, finding the remote associations between them — you get a level 5 idea.
 
@@ -18,8 +18,9 @@ Eureka finds the ideas hiding between your ideas.
 
 1. Give your agent access to the `eureka` CLI
 2. Tell it to ingest your sources (books, articles, transcripts, whatever)
-3. Open the dashboard (`eureka serve`) to explore, review, and think
-4. Your agent handles discovery, scoring, and maintenance in the background
+3. Talk to the agent — ask questions, brain dump, get pushback and connections
+4. Browse the dashboard when you want a visual view
+5. The agent handles discovery, scoring, and maintenance in the background
 
 The dashboard has 4 tabs:
 - **Graph** — force-directed layout of your knowledge, community coloring, click to explore
