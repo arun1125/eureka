@@ -50,6 +50,27 @@ def main():
 
     command = args[0]
 
+    if command in ("--help", "-h", "help"):
+        print(
+            "Usage: eureka <command> [options]\n\n"
+            "Commands:\n"
+            "  init <dir>              Create a new brain\n"
+            "  ingest <source>         Add a source (file, URL, arxiv:ID)\n"
+            "  discover [--count N]    Find & write molecule candidates\n"
+            "  ask <question>          Query the brain\n"
+            "  review <slug> yes|no    Accept or reject a molecule\n"
+            "  status                  Brain health & stats\n"
+            "  dump <text>             Extract atoms from raw text\n"
+            "  profile [--answers ..]  Onboarding questions & profile\n"
+            "  reflect                 Generate a reflection\n"
+            "  serve [--port N]        Start visual dashboard\n\n"
+            "Options:\n"
+            "  --brain-dir <dir>       Brain directory (or set EUREKA_BRAIN)\n"
+            "  --help                  Show this help\n",
+            file=sys.stderr,
+        )
+        sys.exit(0)
+
     if command == "init":
         if len(args) < 2:
             emit(envelope(False, "init", {"message": "Usage: eureka init <brain_dir>"}))
