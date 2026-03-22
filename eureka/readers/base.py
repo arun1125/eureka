@@ -7,14 +7,21 @@ from eureka.readers.url import URLReader
 from eureka.readers.youtube import YouTubeReader
 from eureka.readers.pdf import PDFReader
 from eureka.readers.epub import EPUBReader
+from eureka.readers.paper import PaperReader
 
 
 def detect_reader(source_str: str):
     """Examine source_str and return the appropriate reader instance."""
+    # arxiv: prefix → PaperReader
+    if source_str.startswith("arxiv:"):
+        return PaperReader()
+
     # URLs first
     if source_str.startswith(("http://", "https://")):
         if "youtube.com" in source_str or "youtu.be" in source_str:
             return YouTubeReader()
+        if "arxiv.org" in source_str:
+            return PaperReader()
         return URLReader()
 
     # File paths

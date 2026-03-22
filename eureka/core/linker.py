@@ -40,6 +40,16 @@ def link_all(
     np.fill_diagonal(sim, -1)
 
     now = datetime.now().isoformat()
+
+    # Ensure edges table has all required columns
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(edges)").fetchall()}
+    if "created_at" not in cols:
+        conn.execute("ALTER TABLE edges ADD COLUMN created_at TEXT")
+        conn.commit()
+    if "similarity" not in cols:
+        conn.execute("ALTER TABLE edges ADD COLUMN similarity REAL")
+        conn.commit()
+
     conn.execute("DELETE FROM edges")
 
     edge_count = 0
