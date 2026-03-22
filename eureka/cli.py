@@ -1,5 +1,6 @@
 """Eureka CLI entrypoint."""
 
+import os
 import sys
 
 from eureka.commands.init import run_init
@@ -8,6 +9,37 @@ from eureka.commands.status import run_status
 from eureka.commands.discover import run_discover
 from eureka.commands.review import run_review
 from eureka.core.output import emit, envelope
+
+
+def _get_brain_dir(args):
+    """Resolve brain directory from --brain-dir flag, positional arg, or EUREKA_BRAIN env var."""
+    # Explicit --brain-dir flag
+    if "--brain-dir" in args:
+        idx = args.index("--brain-dir")
+        if idx + 1 < len(args):
+            return args[idx + 1]
+    # Env var
+    env_dir = os.environ.get("EUREKA_BRAIN")
+    if env_dir:
+        return env_dir
+    return None
+
+
+def _get_positional_brain_dir(args):
+    """Find positional brain_dir arg, skipping flags and their values."""
+    skip_next = False
+    flags_with_values = {"--count", "--port", "--brain-dir"}
+    for i, arg in enumerate(args[1:], 1):  # skip command name
+        if skip_next:
+            skip_next = False
+            continue
+        if arg in flags_with_values:
+            skip_next = True
+            continue
+        if arg.startswith("-"):
+            continue
+        return arg
+    return None
 
 
 def main():
@@ -25,52 +57,54 @@ def main():
         run_init(args[1])
     elif command == "ingest":
         if len(args) < 2:
-            emit(envelope(False, "ingest", {"message": "Usage: eureka ingest <source> [--brain-dir <dir>]"}))
+            emit(envelope(False, "ingest", {"message": "Usage: eureka ingest <source> [--brain-dir <dir>] [--paper]"}))
             sys.exit(1)
         source = args[1]
-        brain_dir = None
-        if "--brain-dir" in args:
-            idx = args.index("--brain-dir")
-            if idx + 1 < len(args):
-                brain_dir = args[idx + 1]
+        brain_dir = _get_brain_dir(args)
         if brain_dir is None:
-            emit(envelope(False, "ingest", {"message": "--brain-dir is required"}))
+            emit(envelope(False, "ingest", {"message": "Brain dir required. Pass --brain-dir or set EUREKA_BRAIN."}))
             sys.exit(1)
-        run_ingest(source, brain_dir)
+        # --paper flag forces PaperReader for PDFs
+        if "--paper" in args:
+            from eureka.readers.paper import PaperReader
+            import eureka.commands.ingest as _ingest_mod
+            _orig_detect = _ingest_mod.detect_reader
+            _ingest_mod.detect_reader = lambda _src: PaperReader()
+            run_ingest(source, brain_dir)
+            _ingest_mod.detect_reader = _orig_detect
+        else:
+            run_ingest(source, brain_dir)
     elif command == "discover":
-        if len(args) < 2:
-            emit(envelope(False, "discover", {"message": "Usage: eureka discover <brain_dir>"}))
+        brain_dir = _get_brain_dir(args) or _get_positional_brain_dir(args)
+        if brain_dir is None:
+            emit(envelope(False, "discover", {"message": "Brain dir required. Pass as arg or set EUREKA_BRAIN."}))
             sys.exit(1)
         count = 10
         if "--count" in args:
             idx = args.index("--count")
             if idx + 1 < len(args):
                 count = int(args[idx + 1])
-        run_discover(args[1], count=count)
+        run_discover(brain_dir, count=count)
     elif command == "review":
         if len(args) < 3:
             emit(envelope(False, "review", {"message": "Usage: eureka review <slug> <yes|no> [--brain-dir <dir>]"}))
             sys.exit(1)
         slug = args[1]
         decision = args[2]
-        brain_dir = None
-        if "--brain-dir" in args:
-            idx = args.index("--brain-dir")
-            if idx + 1 < len(args):
-                brain_dir = args[idx + 1]
+        brain_dir = _get_brain_dir(args)
         if brain_dir is None:
-            emit(envelope(False, "review", {"message": "--brain-dir is required"}))
+            emit(envelope(False, "review", {"message": "Brain dir required. Pass --brain-dir or set EUREKA_BRAIN."}))
             sys.exit(1)
         run_review(slug, decision, brain_dir)
     elif command == "serve":
-        brain_dir = args[1] if len(args) > 1 else None
+        brain_dir = _get_brain_dir(args) or _get_positional_brain_dir(args)
         port = 8765
         if "--port" in args:
             idx = args.index("--port")
             if idx + 1 < len(args):
                 port = int(args[idx + 1])
         if brain_dir is None:
-            emit(envelope(False, "serve", {"message": "--brain-dir or positional arg required"}))
+            emit(envelope(False, "serve", {"message": "Brain dir required. Pass as arg or set EUREKA_BRAIN."}))
             sys.exit(1)
         from eureka.core.server import create_app
         import sys as _sys
@@ -82,17 +116,13 @@ def main():
         except KeyboardInterrupt:
             server.shutdown()
     elif command == "ask":
-        if len(args) < 3:
-            emit(envelope(False, "ask", {"message": "Usage: eureka ask <question> --brain-dir <dir>"}))
+        if len(args) < 2:
+            emit(envelope(False, "ask", {"message": "Usage: eureka ask <question> [--brain-dir <dir>]"}))
             sys.exit(1)
         question = args[1]
-        brain_dir = None
-        if "--brain-dir" in args:
-            idx = args.index("--brain-dir")
-            if idx + 1 < len(args):
-                brain_dir = args[idx + 1]
+        brain_dir = _get_brain_dir(args)
         if brain_dir is None:
-            emit(envelope(False, "ask", {"message": "--brain-dir is required"}))
+            emit(envelope(False, "ask", {"message": "Brain dir required. Pass --brain-dir or set EUREKA_BRAIN."}))
             sys.exit(1)
         import struct
         from eureka.core.db import open_db
@@ -108,38 +138,29 @@ def main():
         conn.close()
     elif command == "dump":
         if len(args) < 2:
-            emit(envelope(False, "dump", {"message": "Usage: eureka dump <text> --brain-dir <dir>"}))
+            emit(envelope(False, "dump", {"message": "Usage: eureka dump <text> [--brain-dir <dir>]"}))
             sys.exit(1)
         raw_text = args[1]
-        brain_dir = None
-        if "--brain-dir" in args:
-            idx = args.index("--brain-dir")
-            if idx + 1 < len(args):
-                brain_dir = args[idx + 1]
+        brain_dir = _get_brain_dir(args)
         if brain_dir is None:
-            emit(envelope(False, "dump", {"message": "--brain-dir is required"}))
+            emit(envelope(False, "dump", {"message": "Brain dir required. Pass --brain-dir or set EUREKA_BRAIN."}))
             sys.exit(1)
         from eureka.core.db import open_db
         from eureka.core.dump import process_dump
         conn = open_db(brain_dir)
-        # LLM is required — use Gemini or pass via env
         try:
-            from eureka.core.llm import get_llm
-            llm = get_llm()
+            from eureka.core.llm import get_llm, load_llm_config
+            llm = get_llm(config=load_llm_config(brain_dir))
         except Exception:
-            emit(envelope(False, "dump", {"message": "No LLM configured. Set EUREKA_LLM or provide llm."}))
+            emit(envelope(False, "dump", {"message": "No LLM configured. Set ANTHROPIC_API_KEY or configure brain.json."}))
             sys.exit(1)
         result = process_dump(raw_text, conn, brain_dir, llm)
         emit(envelope(True, "dump", result))
         conn.close()
     elif command == "profile":
-        brain_dir = None
-        if "--brain-dir" in args:
-            idx = args.index("--brain-dir")
-            if idx + 1 < len(args):
-                brain_dir = args[idx + 1]
+        brain_dir = _get_brain_dir(args)
         if brain_dir is None:
-            emit(envelope(False, "profile", {"message": "--brain-dir is required"}))
+            emit(envelope(False, "profile", {"message": "Brain dir required. Pass --brain-dir or set EUREKA_BRAIN."}))
             sys.exit(1)
         from eureka.core.profile import get_questions, process_answers, get_profile
         from eureka.core.db import open_db
@@ -148,10 +169,10 @@ def main():
             answers_text = args[idx + 1] if idx + 1 < len(args) else ""
             conn = open_db(brain_dir)
             try:
-                from eureka.core.llm import get_llm
-                llm = get_llm()
+                from eureka.core.llm import get_llm, load_llm_config
+                llm = get_llm(config=load_llm_config(brain_dir))
             except Exception:
-                emit(envelope(False, "profile", {"message": "No LLM configured."}))
+                emit(envelope(False, "profile", {"message": "No LLM configured. Set ANTHROPIC_API_KEY or configure brain.json."}))
                 sys.exit(1)
             result = process_answers(conn, brain_dir, answers_text, llm)
             emit(envelope(True, "profile", result))
@@ -160,13 +181,9 @@ def main():
             questions = get_questions()
             emit(envelope(True, "profile", {"questions": questions}))
     elif command == "reflect":
-        brain_dir = None
-        if "--brain-dir" in args:
-            idx = args.index("--brain-dir")
-            if idx + 1 < len(args):
-                brain_dir = args[idx + 1]
+        brain_dir = _get_brain_dir(args)
         if brain_dir is None:
-            emit(envelope(False, "reflect", {"message": "--brain-dir is required"}))
+            emit(envelope(False, "reflect", {"message": "Brain dir required. Pass --brain-dir or set EUREKA_BRAIN."}))
             sys.exit(1)
         from eureka.core.db import open_db
         from eureka.core.reflect import reflect
@@ -176,10 +193,11 @@ def main():
         emit(envelope(True, "reflect", result))
         conn.close()
     elif command == "status":
-        if len(args) < 2:
-            emit(envelope(False, "status", {"message": "Usage: eureka status <brain_dir>"}))
+        brain_dir = _get_brain_dir(args) or _get_positional_brain_dir(args)
+        if brain_dir is None:
+            emit(envelope(False, "status", {"message": "Brain dir required. Pass as arg or set EUREKA_BRAIN."}))
             sys.exit(1)
-        run_status(args[1])
+        run_status(brain_dir)
     else:
         emit(envelope(False, "error", {"message": f"Unknown command: {command}"}))
         sys.exit(1)

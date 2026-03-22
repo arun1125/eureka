@@ -112,7 +112,10 @@ def _goal_alignment(conn: sqlite3.Connection) -> list[dict]:
         return []
 
     # Get all atom titles and tags for coverage check
-    atoms = conn.execute("SELECT slug, title FROM atoms").fetchall()
+    from eureka.core.db import atom_table, atom_title_expr
+    _atbl = atom_table(conn)
+    _title_expr = atom_title_expr(conn)
+    atoms = conn.execute(f"SELECT slug, {_title_expr} AS title FROM {_atbl}").fetchall()
     atom_words: set[str] = set()
     for a in atoms:
         for w in a["title"].lower().split():

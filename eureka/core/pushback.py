@@ -153,11 +153,14 @@ def detect_goal_gaps(conn: sqlite3.Connection) -> list[dict]:
     recent_slugs = {row["slug"] for row in all_activities}
 
     # Load atom titles for those slugs
+    from eureka.core.db import atom_table, atom_title_expr
+    _atbl = atom_table(conn)
+    _title_expr = atom_title_expr(conn)
     activity_titles = set()
     activity_title_words = set()
     for slug in recent_slugs:
         atom = conn.execute(
-            "SELECT title FROM atoms WHERE slug = ?", (slug,)
+            f"SELECT {_title_expr} AS title FROM {_atbl} WHERE slug = ?", (slug,)
         ).fetchone()
         if atom:
             title = atom["title"].lower()

@@ -13,8 +13,13 @@ from eureka.readers.base import detect_reader
 def get_llm(brain_dir: Path):
     """Return an LLM instance for extraction. Monkeypatch this in tests."""
     try:
-        from eureka.core.llm import get_llm as _get_llm
-        return _get_llm()
+        from eureka.core.llm import get_llm as _get_llm, GeminiCLI, load_llm_config
+        import shutil
+        llm = _get_llm(config=load_llm_config(brain_dir))
+        if isinstance(llm, GeminiCLI) and shutil.which("gemini") is None:
+            print("Warning: gemini CLI not found on PATH. LLM disabled.", file=sys.stderr)
+            return None
+        return llm
     except Exception:
         return None
 
@@ -24,7 +29,8 @@ def run_ingest(source: str, brain_dir_path: str) -> None:
 
     # Validate source exists (for file paths, not URLs)
     is_url = source.startswith(("http://", "https://"))
-    if not is_url and not Path(source).exists():
+    is_arxiv = source.startswith("arxiv:")
+    if not is_url and not is_arxiv and not Path(source).exists():
         emit(envelope(False, "ingest", {"message": f"Source not found: {source}"}))
         sys.exit(3)
 
@@ -67,6 +73,7 @@ def run_ingest(source: str, brain_dir_path: str) -> None:
 
     # Extract atoms via LLM (if available)
     atoms_created = 0
+    atom_slugs = []
     llm = get_llm(brain_dir)
     if llm is not None:
         # Gather existing tags from current atoms
@@ -92,6 +99,7 @@ def run_ingest(source: str, brain_dir_path: str) -> None:
             content = f"# {atom['title']}\n\n{body_with_links}\n\n{tags_line}\n"
             md_path.write_text(content)
             atoms_created += 1
+            atom_slugs.append(slug)
 
     # Re-index, embed, and link if atoms were created
     if atoms_created > 0:
@@ -110,6 +118,20 @@ def run_ingest(source: str, brain_dir_path: str) -> None:
         finally:
             conn.close()
 
+    # Paper-specific: create reference stubs and citation edges
+    stubs_info = {}
+    if source_type == "paper" and result.get("references"):
+        conn = open_db(brain_dir / "brain.db")
+        try:
+            from eureka.core.citation_graph import build_reference_stubs
+            print(f"Building citation graph ({len(result['references'])} references)...",
+                  file=sys.stderr, flush=True)
+            stubs_info = build_reference_stubs(conn, result["references"], atom_slugs)
+            print(f"Created {stubs_info['stubs_created']} stubs, "
+                  f"{stubs_info['edges_created']} citation edges.", file=sys.stderr, flush=True)
+        finally:
+            conn.close()
+
     emit(envelope(True, "ingest", {
         "source": {
             "id": source_id,
@@ -119,4 +141,5 @@ def run_ingest(source: str, brain_dir_path: str) -> None:
             "chunk_count": len(chunks),
         },
         "atoms_created": atoms_created,
+        **stubs_info,
     }))

@@ -46,7 +46,8 @@ def _unpack_vector(blob: bytes) -> list[float]:
 
 def ensure_embeddings(conn: sqlite3.Connection, brain_dir: Path) -> None:
     """Embed all atoms and cache vectors in the embeddings table. Idempotent."""
-    rows = conn.execute("SELECT slug, body FROM atoms").fetchall()
+    from eureka.core.db import atom_table
+    rows = conn.execute(f"SELECT slug, body FROM {atom_table(conn)}").fetchall()
     existing = {
         r["slug"]
         for r in conn.execute("SELECT slug FROM embeddings").fetchall()

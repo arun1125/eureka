@@ -89,14 +89,48 @@ class Claude:
         return data["content"][0]["text"].strip()
 
 
-def get_llm():
-    """Return the default LLM client. Checks env vars for config."""
+def load_llm_config(brain_dir) -> dict:
+    """Load the llm section from brain.json in the given brain directory."""
+    from pathlib import Path
+    if brain_dir is None:
+        return {}
+    config_path = Path(brain_dir) / "brain.json"
+    if config_path.exists():
+        try:
+            return json.loads(config_path.read_text()).get("llm", {})
+        except (json.JSONDecodeError, KeyError):
+            return {}
+    return {}
+
+
+def get_llm(config: dict = None):
+    """Return the LLM client.
+
+    Args:
+        config: Optional dict with 'provider' and 'model' keys
+                (from brain.json's "llm" section). If None, uses env vars only.
+    """
     import os
+
+    config = config or {}
+    provider = config.get("provider", "").lower()
+    model = config.get("model")
+
     claude_key = os.environ.get("ANTHROPIC_API_KEY")
-    if claude_key:
-        model = os.environ.get("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
-        return Claude(claude_key, model=model)
     kimi_key = os.environ.get("KIMI_API_KEY") or os.environ.get("MOONSHOT_API_KEY")
+
+    # Config-specified provider
+    if provider == "claude" and claude_key:
+        return Claude(claude_key, model=model or "claude-haiku-4-5-20251001")
+    if provider == "kimi" and kimi_key:
+        return KimiK2(kimi_key)
+    if provider == "gemini":
+        return GeminiCLI()
+
+    # Fallback: env var detection
+    if claude_key:
+        env_model = os.environ.get("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
+        return Claude(claude_key, model=model or env_model)
     if kimi_key:
         return KimiK2(kimi_key)
     return GeminiCLI()

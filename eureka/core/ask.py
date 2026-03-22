@@ -116,10 +116,13 @@ def ask(
 
     # --- 6. Reframes from V-structures (top 3, with titles) ---
     # Load titles for reframe readability
+    from eureka.core.db import atom_table, atom_title_expr
+    _atbl = atom_table(conn)
+    _title_expr = atom_title_expr(conn)
     _title_cache = {}
     def _get_title(slug):
         if slug not in _title_cache:
-            row = conn.execute("SELECT title FROM atoms WHERE slug = ?", (slug,)).fetchone()
+            row = conn.execute(f"SELECT {_title_expr} AS title FROM {_atbl} WHERE slug = ?", (slug,)).fetchone()
             _title_cache[slug] = row["title"] if row else slug.replace("-", " ")
         return _title_cache[slug]
 

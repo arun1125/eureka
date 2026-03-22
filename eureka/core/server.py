@@ -5,7 +5,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
-from eureka.core.db import open_db, get_stats
+from eureka.core.db import open_db, get_stats, atom_table, atom_title_expr, atom_source_expr
 from eureka.core.review import accept_molecule, reject_molecule
 
 
@@ -44,7 +44,8 @@ def create_app(brain_dir: str) -> dict:
                     all_slugs = []
                     slug_type = {}
                     slug_method = {}
-                    for row in conn.execute("SELECT slug FROM atoms"):
+                    _atbl = atom_table(conn)
+                    for row in conn.execute(f"SELECT slug FROM {_atbl}"):
                         all_slugs.append(row["slug"])
                         slug_type[row["slug"]] = "atom"
                     for row in conn.execute("SELECT slug, method FROM molecules"):
@@ -57,11 +58,12 @@ def create_app(brain_dir: str) -> dict:
                     from collections import defaultdict
                     edge_counts = defaultdict(int)
                     edge_list = []
-                    for row in conn.execute("SELECT source, target, similarity FROM edges ORDER BY similarity DESC"):
+                    for row in conn.execute("SELECT source, target, similarity FROM edges ORDER BY COALESCE(similarity, 1.0) DESC"):
                         s, t = row["source"], row["target"]
+                        sim = row["similarity"] if row["similarity"] is not None else 1.0
                         if s in atom_set and t in atom_set:
                             if edge_counts[s] < 5 and edge_counts[t] < 5:
-                                edge_list.append({"source": s, "target": t, "similarity": row["similarity"]})
+                                edge_list.append({"source": s, "target": t, "similarity": sim})
                                 edge_counts[s] += 1
                                 edge_counts[t] += 1
 
@@ -90,7 +92,8 @@ def create_app(brain_dir: str) -> dict:
 
                     # Load titles for display
                     slug_title = {}
-                    for row in conn.execute("SELECT slug, title FROM atoms"):
+                    _title_expr = atom_title_expr(conn)
+                    for row in conn.execute(f"SELECT slug, {_title_expr} AS title FROM {_atbl}"):
                         slug_title[row["slug"]] = row["title"]
                     for row in conn.execute("SELECT slug, title FROM molecules"):
                         slug_title[row["slug"]] = row["title"]
@@ -118,6 +121,9 @@ def create_app(brain_dir: str) -> dict:
                 conn = open_db(brain_dir)
                 try:
                     # Build query with optional source + text filters
+                    _atbl = atom_table(conn)
+                    _title_expr = atom_title_expr(conn)
+                    _src_expr = atom_source_expr(conn)
                     where_clauses = []
                     params = []
 
@@ -127,17 +133,17 @@ def create_app(brain_dir: str) -> dict:
                             "SELECT title FROM sources WHERE id = ?", (source_id,)
                         ).fetchone()
                         if src_row:
-                            where_clauses.append("source_title = ?")
+                            where_clauses.append(f"{_src_expr} = ?")
                             params.append(src_row["title"])
 
                     if q and q.strip():
-                        where_clauses.append("(title LIKE ? OR body LIKE ? OR slug LIKE ?)")
+                        where_clauses.append(f"({_title_expr} LIKE ? OR body LIKE ? OR slug LIKE ?)")
                         params.extend([f"%{q}%", f"%{q}%", f"%{q}%"])
 
-                    sql = "SELECT slug, title, body FROM atoms"
+                    sql = f"SELECT slug, {_title_expr} AS title, body FROM {_atbl}"
                     if where_clauses:
                         sql += " WHERE " + " AND ".join(where_clauses)
-                    sql += " ORDER BY title LIMIT 100"
+                    sql += f" ORDER BY {_title_expr} LIMIT 100"
 
                     rows = conn.execute(sql, params).fetchall()
                     results = [{
@@ -222,14 +228,24 @@ def create_app(brain_dir: str) -> dict:
                 conn = open_db(brain_dir)
                 try:
                     # Check atoms first
+                    _atbl = atom_table(conn)
+                    _title_expr = atom_title_expr(conn)
                     row = conn.execute(
-                        "SELECT slug, title, body FROM atoms WHERE slug = ?", (slug,)
+                        f"SELECT slug, {_title_expr} AS title, body FROM {_atbl} WHERE slug = ?", (slug,)
                     ).fetchone()
                     if row:
                         tags = [r["name"] for r in conn.execute(
                             "SELECT t.name FROM tags t JOIN note_tags nt ON t.id = nt.tag_id WHERE nt.slug = ?",
                             (slug,),
                         ).fetchall()]
+                        # If using notes table and tags table is empty, parse from notes.tags column (JSON array)
+                        if not tags and _atbl == "notes":
+                            ntags_row = conn.execute("SELECT tags FROM notes WHERE slug = ?", (slug,)).fetchone()
+                            if ntags_row and ntags_row["tags"]:
+                                try:
+                                    tags = json.loads(ntags_row["tags"])
+                                except (json.JSONDecodeError, TypeError):
+                                    tags = [t.strip() for t in ntags_row["tags"].split(",") if t.strip()]
                         self._json_response({
                             "slug": row["slug"],
                             "title": row["title"],
@@ -314,9 +330,11 @@ def create_app(brain_dir: str) -> dict:
                     scored.sort(key=lambda x: x[1], reverse=True)
                     top = scored[:limit]
 
+                    _atbl = atom_table(conn)
+                    _title_expr = atom_title_expr(conn)
                     neighbors = []
                     for slug, sim in top:
-                        row = conn.execute("SELECT title FROM atoms WHERE slug = ?", (slug,)).fetchone()
+                        row = conn.execute(f"SELECT {_title_expr} AS title FROM {_atbl} WHERE slug = ?", (slug,)).fetchone()
                         neighbors.append({
                             "slug": slug,
                             "title": row["title"] if row else slug.replace("-", " "),
@@ -348,9 +366,12 @@ def create_app(brain_dir: str) -> dict:
                     candidates = discover_from_atom(conn, embeddings, atom_slug, method, cap=10)
 
                     # Score each candidate
+                    _atbl = atom_table(conn)
+                    _title_expr = atom_title_expr(conn)
+                    _src_expr = atom_source_expr(conn)
                     source_map = {}
                     try:
-                        for r in conn.execute("SELECT slug, source_title FROM atoms WHERE source_title IS NOT NULL"):
+                        for r in conn.execute(f"SELECT slug, {_src_expr} AS source_title FROM {_atbl} WHERE {_src_expr} IS NOT NULL"):
                             source_map[r["slug"]] = r["source_title"]
                     except Exception:
                         pass
@@ -364,7 +385,7 @@ def create_app(brain_dir: str) -> dict:
                     for c in candidates:
                         c["atom_titles"] = {}
                         for s in c["atoms"]:
-                            row = conn.execute("SELECT title FROM atoms WHERE slug = ?", (s,)).fetchone()
+                            row = conn.execute(f"SELECT {_title_expr} AS title FROM {_atbl} WHERE slug = ?", (s,)).fetchone()
                             c["atom_titles"][s] = row["title"] if row else s.replace("-", " ")
 
                     candidates.sort(key=lambda c: c.get("score", 0), reverse=True)
@@ -429,15 +450,18 @@ def create_app(brain_dir: str) -> dict:
                     from eureka.core.llm import get_llm
                     from datetime import datetime, timezone
 
-                    llm = get_llm()
+                    from eureka.core.llm import load_llm_config
+                    llm = get_llm(config=load_llm_config(brain_dir))
                     if llm is None:
-                        self._json_response({"error": "no LLM configured (set ANTHROPIC_API_KEY)"}, 500)
+                        self._json_response({"error": "no LLM configured (set ANTHROPIC_API_KEY or configure brain.json)"}, 500)
                         return
 
                     # Build prompt
+                    _atbl = atom_table(conn)
+                    _title_expr = atom_title_expr(conn)
                     atom_bodies = {}
                     for slug in atom_slugs:
-                        row = conn.execute("SELECT title, body FROM atoms WHERE slug = ?", (slug,)).fetchone()
+                        row = conn.execute(f"SELECT {_title_expr} AS title, body FROM {_atbl} WHERE slug = ?", (slug,)).fetchone()
                         if row:
                             atom_bodies[slug] = f"# {row['title']}\n\n{row['body']}"
 

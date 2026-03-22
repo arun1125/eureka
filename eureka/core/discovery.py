@@ -12,7 +12,8 @@ from eureka.core.scorer import score_candidate
 
 
 def _atom_slugs(conn: sqlite3.Connection) -> list[str]:
-    rows = conn.execute("SELECT slug FROM atoms").fetchall()
+    from eureka.core.db import atom_table
+    rows = conn.execute(f"SELECT slug FROM {atom_table(conn)}").fetchall()
     return [r["slug"] for r in rows]
 
 
@@ -595,9 +596,12 @@ def discover_all(conn, embeddings):
     )
 
     # Build source map from atoms table (real book sources)
+    from eureka.core.db import atom_table, atom_source_expr
+    _atbl = atom_table(conn)
+    _src_expr = atom_source_expr(conn)
     source_map = {}
     try:
-        rows = conn.execute("SELECT slug, source_title FROM atoms WHERE source_title IS NOT NULL").fetchall()
+        rows = conn.execute(f"SELECT slug, {_src_expr} AS source_title FROM {_atbl} WHERE {_src_expr} IS NOT NULL").fetchall()
         for r in rows:
             source_map[r["slug"]] = r["source_title"]
     except Exception:

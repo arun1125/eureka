@@ -8,6 +8,10 @@ from eureka.core.db import open_db
 from eureka.core.output import emit, envelope
 
 DEFAULT_CONFIG = {
+    "llm": {
+        "provider": "claude",
+        "model": "claude-haiku-4-5-20251001",
+    },
     "pipeline": {},
 }
 

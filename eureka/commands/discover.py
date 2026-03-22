@@ -14,8 +14,13 @@ from eureka.core.output import emit, envelope
 def get_llm(brain_dir):
     """Return an LLM instance for molecule writing. Monkeypatch in tests."""
     try:
-        from eureka.core.llm import get_llm as _get_llm
-        return _get_llm()
+        from eureka.core.llm import get_llm as _get_llm, GeminiCLI, load_llm_config
+        import shutil
+        llm = _get_llm(config=load_llm_config(brain_dir))
+        if isinstance(llm, GeminiCLI) and shutil.which("gemini") is None:
+            print("Warning: gemini CLI not found on PATH. LLM disabled.", file=sys.stderr)
+            return None
+        return llm
     except Exception:
         return None
 
@@ -74,9 +79,12 @@ def run_discover(brain_dir_path: str, method: str = "all", count: int = 10) -> N
             method_name = candidate.get("method", "unknown")
 
             # Build prompt for molecule writing
+            from eureka.core.db import atom_table, atom_title_expr
+            _atbl = atom_table(conn)
+            _title_expr = atom_title_expr(conn)
             atom_bodies = {}
             for slug in atom_slugs:
-                row = conn.execute("SELECT title, body FROM atoms WHERE slug = ?", (slug,)).fetchone()
+                row = conn.execute(f"SELECT {_title_expr} AS title, body FROM {_atbl} WHERE slug = ?", (slug,)).fetchone()
                 if row:
                     atom_bodies[slug] = f"# {row['title']}\n\n{row['body']}"
 

@@ -31,6 +31,7 @@ def open_db(db_path: Path) -> sqlite3.Connection:
         CREATE TABLE IF NOT EXISTS edges (
             source TEXT NOT NULL,
             target TEXT NOT NULL,
+            similarity REAL,
             created_at TEXT DEFAULT (datetime('now')),
             PRIMARY KEY (source, target),
             FOREIGN KEY (source) REFERENCES atoms(slug),
@@ -114,6 +115,10 @@ def open_db(db_path: Path) -> sqlite3.Connection:
         );
         CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts4(slug, body, tags);
     """)
+    # Migrate: add similarity column to edges if missing (pre-existing databases)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(edges)").fetchall()}
+    if "similarity" not in cols:
+        conn.execute("ALTER TABLE edges ADD COLUMN similarity REAL")
     conn.commit()
     return conn
 
@@ -144,7 +149,7 @@ def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
 
 _ALLOWED_TABLES = {"atoms", "molecules", "sources", "edges", "tags", "note_tags",
                     "embeddings", "reviews", "discovery_runs", "molecule_atoms",
-                    "profile", "activity"}
+                    "profile", "activity", "notes"}
 
 
 def _count(conn: sqlite3.Connection, table: str, column: str = None, value: str = None) -> int:
@@ -160,9 +165,50 @@ def _count(conn: sqlite3.Connection, table: str, column: str = None, value: str 
     return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
 
 
+def use_notes_table(conn: sqlite3.Connection) -> bool:
+    """Return True if the 'notes' table has data and 'atoms' is empty.
+
+    SecondBrainKit stores data in a 'notes' table with a different schema.
+    This helper lets all code transparently fall back to it.
+    """
+    atoms_count = _count(conn, "atoms")
+    if atoms_count > 0:
+        return False
+    if _table_exists(conn, "notes"):
+        return _count(conn, "notes") > 0
+    return False
+
+
+def atom_table(conn: sqlite3.Connection) -> str:
+    """Return the table name to use for atom queries ('atoms' or 'notes')."""
+    return "notes" if use_notes_table(conn) else "atoms"
+
+
+def atom_title_expr(conn: sqlite3.Connection) -> str:
+    """Return a SQL expression for the title column.
+
+    The 'atoms' table has a 'title' column.  The 'notes' table does not,
+    so we derive it from the slug (replace hyphens with spaces).
+    """
+    if use_notes_table(conn):
+        return "REPLACE(slug, '-', ' ')"
+    return "title"
+
+
+def atom_source_expr(conn: sqlite3.Connection) -> str:
+    """Return a SQL expression for the source_title column.
+
+    atoms.source_title  →  notes.source
+    """
+    if use_notes_table(conn):
+        return "source"
+    return "source_title"
+
+
 def get_stats(conn: sqlite3.Connection) -> dict:
     """Return brain statistics dict."""
-    atoms = _count(conn, "atoms")
+    tbl = atom_table(conn)
+    atoms = _count(conn, tbl)
     mol_total = _count(conn, "molecules")
     mol_pending = _count(conn, "molecules", "review_status", "pending")
     mol_accepted = _count(conn, "molecules", "review_status", "accepted")
