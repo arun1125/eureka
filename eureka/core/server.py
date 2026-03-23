@@ -206,18 +206,25 @@ def create_app(brain_dir: str) -> dict:
                 conn = open_db(brain_dir)
                 try:
                     rows = conn.execute(
-                        "SELECT slug, eli5, score, method, review_status, body, created_at FROM molecules"
+                        "SELECT slug, title, eli5, score, method, review_status, body, created_at FROM molecules"
                     ).fetchall()
                     molecules = []
                     for row in rows:
+                        # Get constituent atoms for this molecule
+                        atom_rows = conn.execute(
+                            "SELECT atom_slug FROM molecule_atoms WHERE molecule_slug = ?",
+                            (row["slug"],),
+                        ).fetchall()
                         molecules.append({
                             "slug": row["slug"],
+                            "title": row["title"],
                             "eli5": row["eli5"],
                             "score": row["score"],
                             "method": row["method"],
                             "review_status": row["review_status"],
                             "body": row["body"],
                             "created_at": row["created_at"],
+                            "atoms": [r["atom_slug"] for r in atom_rows],
                         })
                     self._json_response({"molecules": molecules})
                 finally:

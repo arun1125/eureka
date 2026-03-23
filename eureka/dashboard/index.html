@@ -742,6 +742,29 @@ function esc(s) {
   return d.innerHTML;
 }
 
+function renderAtomPills(atoms) {
+  if (!atoms || !atoms.length) return '';
+  return '<div style="display:flex;flex-wrap:wrap;gap:6px;margin:10px 0;">' +
+    atoms.map(a => '<span style="font-size:12px;padding:3px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:4px;color:var(--text-dim);cursor:pointer;" onclick="showDetail(\'' + esc(a) + '\')">' + esc(a.replace(/-/g, ' ')) + '</span>').join('') +
+    '</div>';
+}
+
+function renderMolBody(body, atoms) {
+  // Split body into paragraphs. Convention: p1 = weaving, p2 = higher-order principle.
+  // Display order: principle (p2) → atom pills → weaving (p1)
+  if (!body) return renderAtomPills(atoms);
+  const paras = body.split(/\n\n+/).filter(p => p.trim());
+  if (paras.length < 2) {
+    return renderAtomPills(atoms) +
+      '<p style="white-space:pre-wrap;line-height:1.75;color:var(--text);margin-top:12px;font-size:14px;">' + esc(body) + '</p>';
+  }
+  const weaving = paras.slice(0, -1).join('\n\n');
+  const principle = paras[paras.length - 1];
+  return '<p style="white-space:pre-wrap;line-height:1.75;color:var(--text);margin-top:12px;font-size:15px;font-weight:500;">' + esc(principle) + '</p>'
+    + renderAtomPills(atoms)
+    + '<p style="white-space:pre-wrap;line-height:1.75;color:var(--text-dim);margin-top:12px;font-size:14px;">' + esc(weaving) + '</p>';
+}
+
 // Masthead date
 const now = new Date();
 const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -1070,7 +1093,7 @@ function renderMolecules(mols, method, sort) {
         </div>
       </div>
       ${m.eli5 ? '<div class="eli5">' + esc(m.eli5) + '</div>' : ''}
-      <p style="white-space:pre-wrap;line-height:1.75;color:var(--text);margin-top:12px;font-size:14px;">${esc(m.body || '')}</p>
+      ${renderMolBody(m.body, m.atoms)}
       <div class="meta">
         <span class="badge ${badgeClass(m.method)}">${esc(methodName(m.method))}</span>
         <span class="badge-status ${statusClass}">${esc(m.review_status)}</span>
@@ -1090,7 +1113,7 @@ async function loadReview() {
     <div class="card" id="review-${safeSlug}" data-slug="${safeSlug}">
       <h3>${esc(m.title || m.slug.replace(/-/g, ' '))}</h3>
       ${m.eli5 ? '<div class="eli5">' + esc(m.eli5) + '</div>' : ''}
-      <p style="white-space:pre-wrap;line-height:1.75;color:var(--text);margin-top:12px;font-size:14px;">${esc(m.body||'')}</p>
+      ${renderMolBody(m.body, m.atoms)}
       <div class="meta">
         <span class="badge ${badgeClass(m.method)}">${esc(methodName(m.method))}</span>
         <span>Score: ${Math.round(m.score)}</span>
@@ -1278,8 +1301,8 @@ document.getElementById('lab-walk-gen-btn').addEventListener('click', async () =
       document.getElementById('lab-result').innerHTML = `
         <div class="card" style="border-left:3px solid var(--rule);">
           <h3>${esc(m.title)}</h3>
-          <p style="white-space:pre-wrap;line-height:1.75;margin-top:12px;font-size:14px;">${esc(m.body)}</p>
           ${m.eli5 ? '<div class="eli5">' + esc(m.eli5) + '</div>' : ''}
+          ${renderMolBody(m.body, m.atoms)}
           <div class="review-actions">
             <button class="btn btn-accept" onclick="fetch('/api/review/${m.slug}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({decision:'yes'})}).then(()=>{this.parentElement.innerHTML='<p>Saved.</p>';loadStats();})">Keep</button>
             <button class="btn btn-reject" onclick="fetch('/api/review/${m.slug}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({decision:'no'})}).then(()=>{this.parentElement.innerHTML='<p>Discarded.</p>';document.getElementById('lab-step4').style.display='none';loadStats();})">Discard</button>
@@ -1376,7 +1399,7 @@ document.querySelectorAll('#lab-methods .lab-method-card').forEach(card => {
               <div class="card" style="border-left:3px solid var(--rule);">
                 <h3>${esc(m.title)}</h3>
                 ${m.eli5 ? '<div class="eli5">' + esc(m.eli5) + '</div>' : ''}
-                <p style="white-space:pre-wrap;line-height:1.75;margin-top:12px;font-size:14px;">${esc(m.body)}</p>
+                ${renderMolBody(m.body, m.atoms)}
                 <div class="review-actions">
                   <button class="btn btn-accept" id="lab-accept">Keep this molecule (y)</button>
                   <button class="btn btn-reject" id="lab-reject">Discard (n)</button>
@@ -1426,7 +1449,7 @@ async function openDetail(slug, edges) {
   let bodyHtml = esc(data.body || '');
   if (data.type === 'molecule') {
     bodyHtml = (data.eli5 ? '<div class="eli5">' + esc(data.eli5) + '</div>' : '')
-      + '<p style="white-space:pre-wrap;line-height:1.8;font-size:14px;">' + esc(data.body || '') + '</p>'
+      + renderMolBody(data.body, data.atoms)
       + '<div class="meta" style="margin-top:10px;"><span class="badge ' + badgeClass(data.method || '') + '">' + esc(methodName(data.method || '')) + '</span>'
       + '<span style="font-family:Inter,sans-serif;font-size:12px;">Score: ' + Math.round(data.score || 0) + '</span></div>';
   }
