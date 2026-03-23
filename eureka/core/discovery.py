@@ -607,10 +607,14 @@ def discover_all(conn, embeddings):
     except Exception:
         pass  # source_title column may not exist in older brains
 
+    # Build feedback index from reviewed molecules
+    from eureka.core.scorer import _build_feedback_index
+    feedback = _build_feedback_index(conn)
+
     for c in candidates:
         atom_slugs = [a if isinstance(a, str) else a["slug"] for a in c["atoms"]]
         candidate_emb = {s: embeddings[s] for s in atom_slugs if s in embeddings}
-        c["score"] = score_candidate(atom_slugs, candidate_emb, embeddings, source_map)
+        c["score"] = score_candidate(atom_slugs, candidate_emb, embeddings, source_map, feedback)
 
     candidates.sort(key=lambda c: c["score"], reverse=True)
     return candidates
