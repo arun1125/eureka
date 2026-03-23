@@ -571,6 +571,7 @@ hr.double { border: none; border-top: 4px double var(--rule); margin: 24px 0; }
   <div class="tab" data-tab="molecules">Molecules</div>
   <div class="tab" data-tab="review">Review</div>
   <div class="tab" data-tab="lab">Idea Lab</div>
+  <div class="tab" data-tab="ranked">Top Atoms</div>
 </div>
 
 <!-- Graph Tab -->
@@ -714,6 +715,12 @@ hr.double { border: none; border-top: 4px double var(--rule); margin: 24px 0; }
   </div>
 </div>
 
+<div class="tab-content" id="tab-ranked">
+  <div class="section-header">Top Atoms</div>
+  <p style="color:var(--text-dim);margin-bottom:16px;font-size:14px;">Atoms ranked by connectivity, molecule participation, bridge potential, and untapped opportunity. Review molecules to shift these rankings.</p>
+  <div id="ranked-atoms-list"></div>
+</div>
+
 <!-- Detail Panel -->
 <div class="detail-panel" id="detail-panel">
   <button class="close-btn" id="detail-close">&times;</button>
@@ -783,6 +790,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     if (tab.dataset.tab === 'molecules') loadMolecules();
     if (tab.dataset.tab === 'review') loadReview();
     if (tab.dataset.tab === 'lab') labSearch('');
+    if (tab.dataset.tab === 'ranked') loadRankedAtoms();
   });
 });
 
@@ -1156,6 +1164,46 @@ async function reviewMolecule(slug, decision) {
   const remaining = document.querySelectorAll('#review-cards .card').length;
   document.getElementById('review-count').textContent = remaining + ' molecules pending review';
   loadStats();
+}
+
+// Ranked Atoms
+async function loadRankedAtoms() {
+  const data = await fetch('/api/atoms/ranked?limit=100').then(r => r.json());
+  const atoms = data.atoms || [];
+  const container = document.getElementById('ranked-atoms-list');
+
+  container.innerHTML = atoms.map((a, i) => {
+    const s = a.signals;
+    const barWidth = (val) => Math.max(val * 100, 2);
+    return `
+    <div class="card" style="cursor:pointer;padding:14px 18px;" onclick="showDetail('${esc(a.slug)}')">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="color:var(--text-dim);font-size:12px;width:24px;">#${i+1}</span>
+          <h3 style="margin:0;font-size:15px;">${esc(a.title)}</h3>
+        </div>
+        <span class="score" style="font-size:18px;">${Math.round(a.score)}</span>
+      </div>
+      <div style="display:flex;gap:12px;font-size:11px;color:var(--text-dim);">
+        <div style="flex:1;">
+          <div style="margin-bottom:2px;">Connectivity</div>
+          <div style="background:var(--border);height:4px;border-radius:2px;"><div style="background:var(--accent-blue);height:4px;border-radius:2px;width:${barWidth(s.connectivity)}%;"></div></div>
+        </div>
+        <div style="flex:1;">
+          <div style="margin-bottom:2px;">Molecule Value</div>
+          <div style="background:var(--border);height:4px;border-radius:2px;"><div style="background:#6a9a3a;height:4px;border-radius:2px;width:${barWidth(s.molecule_value)}%;"></div></div>
+        </div>
+        <div style="flex:1;">
+          <div style="margin-bottom:2px;">Bridge</div>
+          <div style="background:var(--border);height:4px;border-radius:2px;"><div style="background:#c49a3a;height:4px;border-radius:2px;width:${barWidth(s.bridge)}%;"></div></div>
+        </div>
+        <div style="flex:1;">
+          <div style="margin-bottom:2px;">Untapped</div>
+          <div style="background:var(--border);height:4px;border-radius:2px;"><div style="background:#9a3a6a;height:4px;border-radius:2px;width:${barWidth(s.untapped)}%;"></div></div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 // Idea Lab

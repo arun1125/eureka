@@ -202,6 +202,25 @@ def create_app(brain_dir: str) -> dict:
                 finally:
                     conn.close()
 
+            elif path == "/api/atoms/ranked":
+                conn = open_db(brain_dir)
+                try:
+                    from eureka.core.atom_ranker import rank_atoms
+                    from eureka.core.db import atom_title_expr
+                    _atbl = atom_table(conn)
+                    _title_expr = atom_title_expr(conn)
+                    ranked = rank_atoms(conn)
+                    # Attach titles
+                    title_map = {}
+                    for r in conn.execute(f"SELECT slug, {_title_expr} AS title FROM {_atbl}"):
+                        title_map[r["slug"]] = r["title"]
+                    for item in ranked:
+                        item["title"] = title_map.get(item["slug"], item["slug"].replace("-", " "))
+                    limit = int(parse_qs(parsed.query).get("limit", ["50"])[0])
+                    self._json_response({"atoms": ranked[:limit], "total": len(ranked)})
+                finally:
+                    conn.close()
+
             elif path == "/api/molecules":
                 conn = open_db(brain_dir)
                 try:
