@@ -245,13 +245,18 @@ def atom_title_expr(conn: sqlite3.Connection) -> str:
 
 
 def atom_source_expr(conn: sqlite3.Connection) -> str:
-    """Return a SQL expression for the source_title column.
+    """Return a SQL expression for the source column.
 
-    atoms.source_title  →  notes.source
+    atoms table: source_title if it exists, else NULL
+    notes table: source
     """
     if use_notes_table(conn):
         return "source"
-    return "source_title"
+    # Check if atoms table actually has source_title column
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(atoms)").fetchall()}
+    if "source_title" in cols:
+        return "source_title"
+    return "NULL"
 
 
 def get_stats(conn: sqlite3.Connection) -> dict:

@@ -147,7 +147,10 @@ def create_app(brain_dir: str) -> dict:
                     results = []
                     if q and q.strip():
                         from eureka.core.embeddings import embed_text, cosine_sim, _unpack_vector
-                        query_vec = embed_text(q)
+                        try:
+                            query_vec = embed_text(q)
+                        except Exception:
+                            query_vec = None
 
                         if query_vec is not None:
                             # Load all embeddings
@@ -206,7 +209,6 @@ def create_app(brain_dir: str) -> dict:
                 conn = open_db(brain_dir)
                 try:
                     from eureka.core.atom_ranker import rank_atoms
-                    from eureka.core.db import atom_title_expr
                     _atbl = atom_table(conn)
                     _title_expr = atom_title_expr(conn)
                     ranked = rank_atoms(conn)
