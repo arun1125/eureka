@@ -17,10 +17,11 @@ Eureka finds the ideas hiding between your ideas.
 ## How you actually use this
 
 1. Give your agent access to the `eureka` CLI
-2. Tell it to ingest your sources (books, articles, transcripts, whatever)
-3. Talk to the agent — ask questions, brain dump, get pushback and connections
-4. Browse the dashboard when you want a visual view
-5. The agent handles discovery, scoring, and maintenance in the background
+2. Run `eureka setup` — it asks subscription vs API tokens, configures everything
+3. Tell it to ingest your sources (books, articles, transcripts, whatever)
+4. Talk to the agent — ask questions, brain dump, get pushback and connections
+5. Browse the dashboard when you want a visual view
+6. The agent handles discovery, scoring, and maintenance in the background
 
 The dashboard has 4 tabs:
 - **Graph** — force-directed layout of your knowledge, community coloring, click to explore
@@ -43,6 +44,9 @@ Exit codes: 0=success, 1=failure, 2=usage error, 3=not found, 5=conflict.
 ```bash
 # Initialize a brain
 eureka init ~/brain
+
+# Configure LLM provider (interactive)
+eureka setup --brain-dir ~/brain
 
 # Set it once
 export EUREKA_BRAIN=~/brain
@@ -94,30 +98,64 @@ RAG stays in the neighborhood. The graph crosses into territory you forgot was r
 pip install git+https://github.com/arun1125/eureka.git
 ```
 
-## LLM Configuration
+## Setup
 
 Eureka needs an LLM for three things: extracting atoms from sources, writing molecule synthesis, and answering questions. Everything else — linking, scoring, discovery, graph analysis — is deterministic math.
 
-Configure in `brain.json` (created by `eureka init`):
-
-```json
-{
-  "llm": {
-    "provider": "claude",
-    "model": "claude-haiku-4-5-20251001"
-  }
-}
-```
+### Interactive setup (humans)
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-your-key-here
+eureka init ~/brain
+eureka setup --brain-dir ~/brain
 ```
 
-| Provider | Config | API key env var | Notes |
-|----------|----|-----------------|-------|
-| Claude | `"claude"` | `ANTHROPIC_API_KEY` | Recommended. Haiku is fast and cheap. |
-| Kimi K2.5 | `"kimi"` | `KIMI_API_KEY` | Free tier available. |
-| Gemini CLI | `"gemini"` | _(uses `gemini` CLI)_ | Free fallback. Quality varies. |
+The setup wizard walks you through provider selection, model choice, and API key entry, then tests the connection.
+
+### Non-interactive setup (agents)
+
+```bash
+eureka setup-instructions                    # Returns JSON with all options
+eureka setup --brain-dir ~/brain --provider claude-cli --model sonnet
+```
+
+Agents should call `setup-instructions` first to get the full provider list, ask the user what they want, then run `setup` with the answer. See [AGENTS.md](AGENTS.md) for the complete agent onboarding flow.
+
+### Providers
+
+| Provider | `--provider` | API key | Notes |
+|----------|-------------|---------|-------|
+| Claude Code subscription | `claude-cli` | None needed | Uses `claude -p`. Zero extra cost on Max/Pro. |
+| Claude API | `claude` | `ANTHROPIC_API_KEY` | Direct Anthropic API. Haiku is fast and cheap. |
+| OpenAI | `openai` | `OPENAI_API_KEY` | GPT-4o, GPT-4.1, etc. |
+| Gemini CLI | `gemini` | None needed | Free tier. Uses `gemini` CLI on PATH. |
+| Ollama | `ollama` | None needed | Local models. Free, private, offline. |
+| OpenRouter | `openrouter` | `OPENROUTER_API_KEY` | 200+ models via openrouter.ai. |
+| Together AI | `together` | `TOGETHER_API_KEY` | Fast open-source models. |
+| Groq | `groq` | `GROQ_API_KEY` | Ultra-fast inference. Free tier. |
+| DeepSeek | `deepseek` | `DEEPSEEK_API_KEY` | Very cheap. |
+| Any OpenAI-compatible | `openai-compatible` | Varies | Pass `--base-url`. Works with LM Studio, vLLM, Fireworks, etc. |
+
+### Examples
+
+```bash
+# Claude Max subscriber — no key, no cost
+eureka setup --brain-dir ~/brain --provider claude-cli --model sonnet
+
+# OpenAI API
+eureka setup --brain-dir ~/brain --provider openai --model gpt-4o-mini --api-key sk-xxx
+
+# Ollama (local, free)
+eureka setup --brain-dir ~/brain --provider ollama --model llama3.1
+
+# Groq (fast, free tier)
+eureka setup --brain-dir ~/brain --provider groq --api-key gsk_xxx
+
+# Custom endpoint
+eureka setup --brain-dir ~/brain --provider openai-compatible \
+  --base-url https://api.example.com/v1 --model my-model --api-key xxx
+```
+
+Setup writes `brain.json` and optionally `.env` in the brain directory. The config is loaded automatically by all commands.
 
 ## Discovery Methods
 
@@ -143,7 +181,7 @@ Three steps use an LLM. Everything else is deterministic: embedding geometry, gr
 
 ## Modular by design
 
-Every piece is independent. Swap the reader (PDF, EPUB, TXT — add your own). Swap the LLM (Claude, Kimi, Gemini, local). Swap the scorer. The CLI is the orchestration layer, not a monolith.
+Every piece is independent. Swap the reader (PDF, EPUB, TXT — add your own). Swap the LLM (10 providers out of the box, or any OpenAI-compatible endpoint). Swap the scorer. The CLI is the orchestration layer, not a monolith.
 
 ## License
 
