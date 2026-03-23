@@ -76,13 +76,35 @@ def create_app(brain_dir: str) -> dict:
                     community = {}
                     tag_to_id = {}
                     tag_counter = 0
+
+                    # Try note_tags join table first, fall back to JSON tags column
+                    has_note_tags = conn.execute("SELECT count(*) FROM note_tags").fetchone()[0] > 0
+
                     for slug in all_slugs:
-                        row = conn.execute(
-                            "SELECT t.name FROM tags t JOIN note_tags nt ON t.id = nt.tag_id "
-                            "WHERE nt.slug = ? ORDER BY t.name LIMIT 1", (slug,)
-                        ).fetchone()
-                        if row:
-                            tag_name = row["name"]
+                        tag_name = None
+                        if has_note_tags:
+                            row = conn.execute(
+                                "SELECT t.name FROM tags t JOIN note_tags nt ON t.id = nt.tag_id "
+                                "WHERE nt.slug = ? ORDER BY t.name LIMIT 1", (slug,)
+                            ).fetchone()
+                            if row:
+                                tag_name = row["name"]
+
+                        if tag_name is None:
+                            # Read from JSON tags column on notes/atoms table
+                            row = conn.execute(
+                                f"SELECT tags FROM {_atbl} WHERE slug = ?", (slug,)
+                            ).fetchone()
+                            if row and row["tags"]:
+                                try:
+                                    import json as _json
+                                    tags_list = _json.loads(row["tags"]) if isinstance(row["tags"], str) else row["tags"]
+                                    if tags_list:
+                                        tag_name = tags_list[0]
+                                except (ValueError, TypeError, IndexError):
+                                    pass
+
+                        if tag_name:
                             if tag_name not in tag_to_id:
                                 tag_to_id[tag_name] = tag_counter
                                 tag_counter += 1
