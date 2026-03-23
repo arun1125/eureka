@@ -119,8 +119,57 @@ def open_db(db_path: Path) -> sqlite3.Connection:
     cols = {r[1] for r in conn.execute("PRAGMA table_info(edges)").fetchall()}
     if "similarity" not in cols:
         conn.execute("ALTER TABLE edges ADD COLUMN similarity REAL")
+
+    # Migrate: sync notes.tags JSON column → tags/note_tags normalized tables.
+    # The notes table (from SecondBrainKit) stores tags as JSON arrays.
+    # The tags/note_tags tables are the normalized form queried everywhere.
+    _sync_note_tags(conn)
+
     conn.commit()
     return conn
+
+
+def _sync_note_tags(conn: sqlite3.Connection) -> None:
+    """Populate tags/note_tags from notes.tags JSON column if they're out of sync.
+
+    Runs on every open_db call but is fast: checks counts first, only does work
+    when the notes table has tags but note_tags is empty or stale.
+    """
+    import json as _json
+
+    if not _table_exists(conn, "notes"):
+        return
+
+    notes_with_tags = conn.execute(
+        "SELECT count(*) FROM notes WHERE tags IS NOT NULL AND tags != '' AND tags != '[]'"
+    ).fetchone()[0]
+    if notes_with_tags == 0:
+        return
+
+    existing_note_tags = conn.execute("SELECT count(*) FROM note_tags").fetchone()[0]
+    if existing_note_tags >= notes_with_tags:
+        return  # Already in sync (or populated by rebuild_index)
+
+    # Rebuild: clear and repopulate from JSON column
+    conn.execute("DELETE FROM note_tags")
+    conn.execute("DELETE FROM tags")
+
+    rows = conn.execute("SELECT slug, tags FROM notes WHERE tags IS NOT NULL AND tags != ''").fetchall()
+    for row in rows:
+        try:
+            tags_list = _json.loads(row["tags"]) if isinstance(row["tags"], str) else row["tags"]
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(tags_list, list):
+            continue
+        for tag_name in tags_list:
+            if not tag_name or not isinstance(tag_name, str):
+                continue
+            tag_id = ensure_tag(conn, tag_name)
+            conn.execute(
+                "INSERT OR IGNORE INTO note_tags (slug, tag_id) VALUES (?, ?)",
+                (row["slug"], tag_id),
+            )
 
 
 def ensure_tag(conn: sqlite3.Connection, tag_name: str) -> int:
