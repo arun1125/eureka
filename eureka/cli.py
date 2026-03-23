@@ -28,7 +28,7 @@ def _get_brain_dir(args):
 def _get_positional_brain_dir(args):
     """Find positional brain_dir arg, skipping flags and their values."""
     skip_next = False
-    flags_with_values = {"--count", "--port", "--brain-dir"}
+    flags_with_values = {"--count", "--port", "--brain-dir", "--provider", "--model", "--api-key", "--base-url"}
     for i, arg in enumerate(args[1:], 1):  # skip command name
         if skip_next:
             skip_next = False
@@ -55,6 +55,7 @@ def main():
             "Usage: eureka <command> [options]\n\n"
             "Commands:\n"
             "  init <dir>              Create a new brain\n"
+            "  setup                   Configure LLM provider (interactive)\n"
             "  ingest <source>         Add a source (file, URL, arxiv:ID)\n"
             "  discover [--count N]    Find & write molecule candidates\n"
             "  ask <question>          Query the brain\n"
@@ -76,6 +77,34 @@ def main():
             emit(envelope(False, "init", {"message": "Usage: eureka init <brain_dir>"}))
             sys.exit(1)
         run_init(args[1])
+    elif command == "setup":
+        from eureka.commands.setup import run_setup_interactive, run_setup_noninteractive
+        brain_dir = _get_brain_dir(args)
+        if brain_dir is None:
+            emit(envelope(False, "setup", {"message": "Brain dir required. Pass --brain-dir or set EUREKA_BRAIN."}))
+            sys.exit(1)
+        # Non-interactive mode: --provider flag present
+        if "--provider" in args:
+            idx = args.index("--provider")
+            provider = args[idx + 1] if idx + 1 < len(args) else None
+            model = None
+            if "--model" in args:
+                midx = args.index("--model")
+                model = args[midx + 1] if midx + 1 < len(args) else None
+            api_key = None
+            if "--api-key" in args:
+                kidx = args.index("--api-key")
+                api_key = args[kidx + 1] if kidx + 1 < len(args) else None
+            base_url = None
+            if "--base-url" in args:
+                bidx = args.index("--base-url")
+                base_url = args[bidx + 1] if bidx + 1 < len(args) else None
+            run_setup_noninteractive(brain_dir, provider, model=model, api_key=api_key, base_url=base_url)
+        else:
+            run_setup_interactive(brain_dir)
+    elif command == "setup-instructions":
+        from eureka.commands.setup import get_setup_instructions
+        emit(envelope(True, "setup-instructions", get_setup_instructions()))
     elif command == "ingest":
         if len(args) < 2:
             emit(envelope(False, "ingest", {"message": "Usage: eureka ingest <source> [--brain-dir <dir>] [--paper]"}))
