@@ -74,8 +74,8 @@ def _blind_spots(conn: sqlite3.Connection) -> list[dict]:
         edges_set.add((e["source"], e["target"]))
         edges_set.add((e["target"], e["source"]))
 
-    # Check all tag pairs where both have >= 2 atoms
-    tag_names = [t for t, atoms in tag_atoms.items() if len(atoms) >= 2]
+    # Only check tags with enough atoms to be meaningful (>= 3)
+    tag_names = [t for t, atoms in tag_atoms.items() if len(atoms) >= 3]
     blind_spots = []
     seen: set[tuple[str, str]] = set()
 
@@ -86,23 +86,30 @@ def _blind_spots(conn: sqlite3.Connection) -> list[dict]:
                 continue
             seen.add(key)
 
+            # Skip if tags share atoms (overlapping topics, not blind spots)
+            if tag_atoms[t1] & tag_atoms[t2]:
+                continue
+
             # Count cross-tag edges
             cross_edges = 0
             for a1 in tag_atoms[t1]:
                 for a2 in tag_atoms[t2]:
-                    if a1 == a2:
-                        continue
                     if (a1, a2) in edges_set:
                         cross_edges += 1
 
-            if cross_edges <= 1:
+            # Only flag if zero connections between non-overlapping tag groups
+            if cross_edges == 0:
                 blind_spots.append({
                     "topic_a": t1,
                     "topic_b": t2,
-                    "note": f"'{t1}' and '{t2}' each have atoms but few connections between them.",
+                    "atoms_a": len(tag_atoms[t1]),
+                    "atoms_b": len(tag_atoms[t2]),
+                    "note": f"'{t1}' ({len(tag_atoms[t1])} atoms) and '{t2}' ({len(tag_atoms[t2])} atoms) have zero connections.",
                 })
 
-    return blind_spots
+    # Sort by combined size (bigger disconnected topics = bigger blind spot)
+    blind_spots.sort(key=lambda b: b["atoms_a"] + b["atoms_b"], reverse=True)
+    return blind_spots[:50]
 
 
 def _goal_alignment(conn: sqlite3.Connection) -> list[dict]:

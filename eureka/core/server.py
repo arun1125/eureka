@@ -25,6 +25,25 @@ def create_app(brain_dir: str) -> dict:
             self.end_headers()
             self.wfile.write(body)
 
+        def _text_search(self, conn, q, _atbl, _title_expr, source_id, _src_expr):
+            """Text-based search fallback (LIKE query)."""
+            where_clauses = []
+            params = []
+            if source_id:
+                src_row = conn.execute("SELECT title FROM sources WHERE id = ?", (source_id,)).fetchone()
+                if src_row:
+                    where_clauses.append(f"{_src_expr} = ?")
+                    params.append(src_row["title"])
+            if q and q.strip():
+                where_clauses.append(f"({_title_expr} LIKE ? OR body LIKE ? OR slug LIKE ?)")
+                params.extend([f"%{q}%", f"%{q}%", f"%{q}%"])
+            sql = f"SELECT slug, {_title_expr} AS title, body FROM {_atbl}"
+            if where_clauses:
+                sql += " WHERE " + " AND ".join(where_clauses)
+            sql += f" ORDER BY {_title_expr} LIMIT 100"
+            rows = conn.execute(sql, params).fetchall()
+            return [{"slug": r["slug"], "title": r["title"], "snippet": (r["body"] or "")[:200]} for r in rows]
+
         def do_GET(self):
             parsed = urlparse(self.path)
             path = parsed.path.rstrip("/")
@@ -120,37 +139,56 @@ def create_app(brain_dir: str) -> dict:
                 source_id = qs.get("source", [""])[0]
                 conn = open_db(brain_dir)
                 try:
-                    # Build query with optional source + text filters
                     _atbl = atom_table(conn)
                     _title_expr = atom_title_expr(conn)
                     _src_expr = atom_source_expr(conn)
-                    where_clauses = []
-                    params = []
 
-                    if source_id:
-                        # Get source title by id
-                        src_row = conn.execute(
-                            "SELECT title FROM sources WHERE id = ?", (source_id,)
-                        ).fetchone()
-                        if src_row:
-                            where_clauses.append(f"{_src_expr} = ?")
-                            params.append(src_row["title"])
-
+                    # Semantic search: embed query and rank by cosine similarity
+                    results = []
                     if q and q.strip():
-                        where_clauses.append(f"({_title_expr} LIKE ? OR body LIKE ? OR slug LIKE ?)")
-                        params.extend([f"%{q}%", f"%{q}%", f"%{q}%"])
+                        from eureka.core.embeddings import embed_text, cosine_sim, _unpack_vector
+                        query_vec = embed_text(q)
 
-                    sql = f"SELECT slug, {_title_expr} AS title, body FROM {_atbl}"
-                    if where_clauses:
-                        sql += " WHERE " + " AND ".join(where_clauses)
-                    sql += f" ORDER BY {_title_expr} LIMIT 100"
+                        if query_vec is not None:
+                            # Load all embeddings
+                            emb_rows = conn.execute("SELECT slug, vector FROM embeddings").fetchall()
+                            scored = []
+                            for r in emb_rows:
+                                vec = _unpack_vector(r["vector"])
+                                sim = cosine_sim(query_vec, vec)
+                                scored.append((r["slug"], sim))
+                            scored.sort(key=lambda x: x[1], reverse=True)
 
-                    rows = conn.execute(sql, params).fetchall()
-                    results = [{
-                        "slug": row["slug"],
-                        "title": row["title"],
-                        "snippet": (row["body"] or "")[:200],
-                    } for row in rows]
+                            # Optional source filter
+                            source_filter = None
+                            if source_id:
+                                src_row = conn.execute(
+                                    "SELECT title FROM sources WHERE id = ?", (source_id,)
+                                ).fetchone()
+                                if src_row:
+                                    source_filter = src_row["title"]
+
+                            for slug, sim in scored[:100]:
+                                row = conn.execute(
+                                    f"SELECT slug, {_title_expr} AS title, body, {_src_expr} AS src FROM {_atbl} WHERE slug = ?",
+                                    (slug,),
+                                ).fetchone()
+                                if not row:
+                                    continue
+                                if source_filter and row["src"] != source_filter:
+                                    continue
+                                results.append({
+                                    "slug": row["slug"],
+                                    "title": row["title"],
+                                    "snippet": (row["body"] or "")[:200],
+                                    "similarity": round(sim, 4),
+                                })
+                        else:
+                            # Fallback to text search if embedding fails
+                            results = self._text_search(conn, q, _atbl, _title_expr, source_id, _src_expr)
+                    else:
+                        # No query — return all atoms (for browsing)
+                        results = self._text_search(conn, "", _atbl, _title_expr, source_id, _src_expr)
 
                     # Sources for dropdown
                     all_sources = [{"id": r["id"], "title": r["title"]} for r in conn.execute(
@@ -238,14 +276,6 @@ def create_app(brain_dir: str) -> dict:
                             "SELECT t.name FROM tags t JOIN note_tags nt ON t.id = nt.tag_id WHERE nt.slug = ?",
                             (slug,),
                         ).fetchall()]
-                        # If using notes table and tags table is empty, parse from notes.tags column (JSON array)
-                        if not tags and _atbl == "notes":
-                            ntags_row = conn.execute("SELECT tags FROM notes WHERE slug = ?", (slug,)).fetchone()
-                            if ntags_row and ntags_row["tags"]:
-                                try:
-                                    tags = json.loads(ntags_row["tags"])
-                                except (json.JSONDecodeError, TypeError):
-                                    tags = [t.strip() for t in ntags_row["tags"].split(",") if t.strip()]
                         self._json_response({
                             "slug": row["slug"],
                             "title": row["title"],

@@ -1,8 +1,9 @@
 """Citation graph — create reference stubs and citation edges from a parsed paper."""
 
+import json
 import re
 import sqlite3
-from eureka.core.db import ensure_tag, tag_note
+from eureka.core.db import atom_table, ensure_tag, tag_note
 
 
 def _slugify(title: str) -> str:
@@ -12,6 +13,20 @@ def _slugify(title: str) -> str:
     slug = re.sub(r"[\s]+", "-", slug)
     slug = re.sub(r"-+", "-", slug)
     return slug.strip("-")[:80]  # cap length
+
+
+def _insert_atom(conn: sqlite3.Connection, tbl: str, slug: str, title: str, body: str, tags: list[str]) -> None:
+    """Insert an atom into whichever table the brain uses."""
+    if tbl == "notes":
+        conn.execute(
+            "INSERT INTO notes (slug, type, tags, body, word_count) VALUES (?, 'atom', ?, ?, ?)",
+            (slug, json.dumps(tags), body, len(body.split())),
+        )
+    else:
+        conn.execute(
+            "INSERT INTO atoms (slug, title, body, body_hash, word_count) VALUES (?, ?, ?, '', ?)",
+            (slug, title, body, len(body.split())),
+        )
 
 
 def build_reference_stubs(conn: sqlite3.Connection, references: list[dict],
@@ -26,6 +41,7 @@ def build_reference_stubs(conn: sqlite3.Connection, references: list[dict],
     Returns:
         {"stubs_created": int, "edges_created": int}
     """
+    _atbl = atom_table(conn)
     stub_tag_id = ensure_tag(conn, "reference-stub")
     paper_tag_id = ensure_tag(conn, "paper")
     stubs_created = 0
@@ -51,13 +67,9 @@ def build_reference_stubs(conn: sqlite3.Connection, references: list[dict],
         body = "\n".join(body_parts) if body_parts else f"Reference: {ref.get('raw', title)}"
 
         # Insert stub atom (skip if exists — idempotent)
-        existing = conn.execute("SELECT slug FROM atoms WHERE slug = ?", (slug,)).fetchone()
+        existing = conn.execute(f"SELECT slug FROM {_atbl} WHERE slug = ?", (slug,)).fetchone()
         if not existing:
-            conn.execute(
-                """INSERT INTO atoms (slug, title, body, body_hash, word_count)
-                   VALUES (?, ?, ?, '', ?)""",
-                (slug, title, body, len(body.split())),
-            )
+            _insert_atom(conn, _atbl, slug, title, body, ["reference-stub", "paper"])
             tag_note(conn, slug, stub_tag_id)
             tag_note(conn, slug, paper_tag_id)
             stubs_created += 1
