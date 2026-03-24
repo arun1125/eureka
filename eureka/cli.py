@@ -28,7 +28,7 @@ def _get_brain_dir(args):
 def _get_positional_brain_dir(args):
     """Find positional brain_dir arg, skipping flags and their values."""
     skip_next = False
-    flags_with_values = {"--count", "--port", "--brain-dir", "--provider", "--model", "--api-key", "--base-url", "--method"}
+    flags_with_values = {"--count", "--port", "--brain-dir", "--provider", "--model", "--api-key", "--base-url", "--method", "--title"}
     for i, arg in enumerate(args[1:], 1):  # skip command name
         if skip_next:
             skip_next = False
@@ -126,16 +126,21 @@ def main():
         if brain_dir is None:
             emit(envelope(False, "ingest", {"message": "Brain dir required. Pass --brain-dir or set EUREKA_BRAIN."}))
             sys.exit(1)
+        # --title flag for custom source name
+        title_override = None
+        if "--title" in args:
+            tidx = args.index("--title")
+            title_override = args[tidx + 1] if tidx + 1 < len(args) else None
         # --paper flag forces PaperReader for PDFs
         if "--paper" in args:
             from eureka.readers.paper import PaperReader
             import eureka.commands.ingest as _ingest_mod
             _orig_detect = _ingest_mod.detect_reader
             _ingest_mod.detect_reader = lambda _src: PaperReader()
-            run_ingest(source, brain_dir, deep="--deep" in args)
+            run_ingest(source, brain_dir, deep="--deep" in args, title_override=title_override)
             _ingest_mod.detect_reader = _orig_detect
         else:
-            run_ingest(source, brain_dir, deep="--deep" in args)
+            run_ingest(source, brain_dir, deep="--deep" in args, title_override=title_override)
     elif command == "enrich":
         brain_dir = _get_brain_dir(args)
         if brain_dir is None:

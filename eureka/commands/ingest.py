@@ -21,7 +21,26 @@ def get_llm(brain_dir: Path):
         return None
 
 
-def run_ingest(source: str, brain_dir_path: str, deep: bool = False) -> None:
+def _generate_title(raw_text: str, llm) -> str:
+    """Ask the LLM to name a source from its content."""
+    preview = raw_text[:2000]
+    prompt = (
+        "Give this source a short, descriptive title (under 60 chars). "
+        "Just the title, nothing else. No quotes.\n\n"
+        f"{preview}"
+    )
+    try:
+        title = llm.generate(prompt).strip().strip('"').strip("'")
+        # Sanity check — if LLM returned garbage, fall back
+        if len(title) > 80 or "\n" in title:
+            return None
+        return title
+    except Exception:
+        return None
+
+
+def run_ingest(source: str, brain_dir_path: str, deep: bool = False,
+               title_override: str = None) -> None:
     brain_dir = Path(brain_dir_path)
 
     # Validate source exists (for file paths, not URLs)
@@ -34,10 +53,19 @@ def run_ingest(source: str, brain_dir_path: str, deep: bool = False) -> None:
     # Read source
     reader = detect_reader(source)
     result = reader.read(source)
-    title = result["title"]
+    title = title_override or result["title"]
     source_type = result["type"]
     chunks = result["chunks"]
     raw_text = "\n\n".join(chunks)
+
+    # If title is just a filename and no override, try LLM naming
+    if not title_override and title == Path(source).stem and not is_url and not is_arxiv:
+        llm = get_llm(Path(brain_dir_path))
+        if llm is not None:
+            smart_title = _generate_title(raw_text, llm)
+            if smart_title:
+                title = smart_title
+                print(f"Source titled: {title}", file=sys.stderr, flush=True)
 
     # Store relative path for local files, original string for URLs/arxiv
     if not is_url and not is_arxiv:
