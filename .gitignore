@@ -14,4 +14,6 @@ secrets/
 SPEC*.md
 UBIQUITOUS_LANGUAGE.md
 plans/
-docs/handoffs/
+demos/
+scripts/
+docs/
