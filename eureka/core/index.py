@@ -5,7 +5,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from eureka.core.db import atom_table, ensure_tag, tag_note
+from eureka.core.db import atom_table, ensure_tag, tag_note, transaction
 from eureka.core.parser import parse_note
 
 
@@ -35,66 +35,66 @@ def rebuild_index(conn: sqlite3.Connection, brain_dir: Path) -> None:
         r[0] for r in conn.execute(f"SELECT slug FROM {_atbl}").fetchall()
     }
 
-    # Clear edges, note_tags, and FTS before rebuild (idempotent)
-    conn.execute("DELETE FROM edges")
-    conn.execute("DELETE FROM note_tags")
-    conn.execute("DELETE FROM notes_fts")
+    # Wrap entire rebuild in a transaction — if any step fails, roll back
+    with transaction(conn):
+        # Clear edges, note_tags, and FTS before rebuild (idempotent)
+        conn.execute("DELETE FROM edges")
+        conn.execute("DELETE FROM note_tags")
+        conn.execute("DELETE FROM notes_fts")
 
-    for note in notes:
-        word_count = len(note["body"].split())
+        for note in notes:
+            word_count = len(note["body"].split())
 
-        if note["slug"] in existing_slugs:
-            # UPDATE existing atom — preserves source_id and created_at
-            if _atbl == "notes":
-                conn.execute(
-                    """UPDATE notes SET type='atom', tags=?, body=?,
-                       word_count=?, mtime=datetime('now') WHERE slug=?""",
-                    (json.dumps(note["tags"]), note["body"], word_count, note["slug"]),
-                )
+            if note["slug"] in existing_slugs:
+                # UPDATE existing atom — preserves source_id and created_at
+                if _atbl == "notes":
+                    conn.execute(
+                        """UPDATE notes SET type='atom', tags=?, body=?,
+                           word_count=?, mtime=datetime('now') WHERE slug=?""",
+                        (json.dumps(note["tags"]), note["body"], word_count, note["slug"]),
+                    )
+                else:
+                    conn.execute(
+                        """UPDATE atoms SET title=?, body=?, body_hash=?,
+                           word_count=?, file_hash=?, updated_at=datetime('now')
+                           WHERE slug=?""",
+                        (note["title"], note["body"], note["body_hash"],
+                         word_count, note["file_hash"], note["slug"]),
+                    )
             else:
-                conn.execute(
-                    """UPDATE atoms SET title=?, body=?, body_hash=?,
-                       word_count=?, file_hash=?, updated_at=datetime('now')
-                       WHERE slug=?""",
-                    (note["title"], note["body"], note["body_hash"],
-                     word_count, note["file_hash"], note["slug"]),
-                )
-        else:
-            # INSERT new atom
-            if _atbl == "notes":
-                conn.execute(
-                    """INSERT INTO notes
-                       (slug, type, tags, body, word_count, mtime)
-                       VALUES (?, 'atom', ?, ?, ?, datetime('now'))""",
-                    (note["slug"], json.dumps(note["tags"]), note["body"], word_count),
-                )
-            else:
-                conn.execute(
-                    """INSERT INTO atoms
-                       (slug, title, body, body_hash, word_count, file_hash, created_at, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))""",
-                    (note["slug"], note["title"], note["body"], note["body_hash"],
-                     word_count, note["file_hash"]),
-                )
+                # INSERT new atom
+                if _atbl == "notes":
+                    conn.execute(
+                        """INSERT INTO notes
+                           (slug, type, tags, body, word_count, mtime)
+                           VALUES (?, 'atom', ?, ?, ?, datetime('now'))""",
+                        (note["slug"], json.dumps(note["tags"]), note["body"], word_count),
+                    )
+                else:
+                    conn.execute(
+                        """INSERT INTO atoms
+                           (slug, title, body, body_hash, word_count, file_hash, created_at, updated_at)
+                           VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))""",
+                        (note["slug"], note["title"], note["body"], note["body_hash"],
+                         word_count, note["file_hash"]),
+                    )
 
-        # Insert edges — only if target exists as an atom
-        for wikilink in note["wikilinks"]:
-            if wikilink in slug_set:
-                conn.execute(
-                    "INSERT OR IGNORE INTO edges (source, target, created_at) VALUES (?, ?, datetime('now'))",
-                    (note["slug"], wikilink),
-                )
+            # Insert edges — only if target exists as an atom
+            for wikilink in note["wikilinks"]:
+                if wikilink in slug_set:
+                    conn.execute(
+                        "INSERT OR IGNORE INTO edges (source, target, created_at) VALUES (?, ?, datetime('now'))",
+                        (note["slug"], wikilink),
+                    )
 
-        # Tags — always populate normalized tables
-        for tag_name in note["tags"]:
-            tag_id = ensure_tag(conn, tag_name)
-            tag_note(conn, note["slug"], tag_id)
+            # Tags — always populate normalized tables
+            for tag_name in note["tags"]:
+                tag_id = ensure_tag(conn, tag_name)
+                tag_note(conn, note["slug"], tag_id)
 
-        # FTS
-        tags_str = ", ".join(note["tags"])
-        conn.execute(
-            "INSERT INTO notes_fts (slug, body, tags) VALUES (?, ?, ?)",
-            (note["slug"], note["body"], tags_str),
-        )
-
-    conn.commit()
+            # FTS
+            tags_str = ", ".join(note["tags"])
+            conn.execute(
+                "INSERT INTO notes_fts (slug, body, tags) VALUES (?, ?, ?)",
+                (note["slug"], note["body"], tags_str),
+            )

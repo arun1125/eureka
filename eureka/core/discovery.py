@@ -703,8 +703,13 @@ def discover_all(conn, embeddings, method: str = "all"):
             fns.append(METHODS[m])
 
     candidates = []
+    seen_keys = set()
     for fn in fns:
-        candidates.extend(fn(conn, embeddings))
+        for c in fn(conn, embeddings):
+            key = tuple(sorted(c["atoms"]))
+            if key not in seen_keys:
+                seen_keys.add(key)
+                candidates.append(c)
 
     # Build source map from atoms table (real book sources)
     from eureka.core.db import atom_table, atom_source_expr

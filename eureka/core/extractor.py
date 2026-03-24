@@ -107,6 +107,9 @@ def extract_atoms(chunks: list[str], existing_tags: list[str], llm,
 
     Args:
         source_type: "paper" uses claim-focused prompt, anything else uses default.
+
+    Raises:
+        RuntimeError: If the LLM call fails after retries.
     """
     chunk_text = "\n\n---\n\n".join(chunks)
     tags_str = ", ".join(existing_tags)
@@ -116,5 +119,8 @@ def extract_atoms(chunks: list[str], existing_tags: list[str], llm,
     else:
         prompt = DEFAULT_EXTRACTION_PROMPT.format(existing_tags=tags_str, chunk_text=chunk_text)
 
-    response = llm.generate(prompt)
+    try:
+        response = llm.generate(prompt)
+    except Exception as e:
+        raise RuntimeError(f"LLM extraction failed: {e}") from e
     return parse_extraction_response(response)

@@ -125,7 +125,7 @@ def run_discover(brain_dir_path: str, method: str = "all", count: int = 10) -> N
                 print(f"Writing molecule {molecules_written + 1}/{len(candidates)} ({method_name})...", file=sys.stderr, flush=True)
                 response = llm.generate(prompt)
             except Exception as e:
-                print(f"LLM error: {e}", file=sys.stderr)
+                print(f"LLM error writing molecule for {atom_slugs}: {e}", file=sys.stderr, flush=True)
                 continue
 
             # Parse response — strip code fences and extract fields

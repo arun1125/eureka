@@ -1,7 +1,26 @@
 """Database utilities."""
 
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
+
+
+@contextmanager
+def transaction(conn: sqlite3.Connection):
+    """Context manager that commits on success or rolls back on error.
+
+    Usage:
+        with transaction(conn):
+            conn.execute("INSERT ...")
+            conn.execute("UPDATE ...")
+        # auto-commits here, or rolls back on exception
+    """
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
 
 
 def open_db(db_path: Path) -> sqlite3.Connection:

@@ -51,7 +51,7 @@ def main():
     command = args[0]
 
     if command in ("--version", "-V"):
-        print("eureka 0.3.0")
+        print("eureka 0.3.1")
         sys.exit(0)
 
     if command in ("--help", "-h", "help"):
@@ -174,7 +174,11 @@ def main():
         if "--count" in args:
             idx = args.index("--count")
             if idx + 1 < len(args):
-                count = int(args[idx + 1])
+                try:
+                    count = int(args[idx + 1])
+                except ValueError:
+                    emit(envelope(False, "discover", {"message": f"--count requires an integer, got '{args[idx + 1]}'"}))
+                    sys.exit(1)
         method = "all"
         if "--method" in args:
             idx = args.index("--method")
@@ -198,7 +202,11 @@ def main():
         if "--port" in args:
             idx = args.index("--port")
             if idx + 1 < len(args):
-                port = int(args[idx + 1])
+                try:
+                    port = int(args[idx + 1])
+                except ValueError:
+                    emit(envelope(False, "serve", {"message": f"--port requires an integer, got '{args[idx + 1]}'"}))
+                    sys.exit(1)
         if brain_dir is None:
             emit(envelope(False, "serve", {"message": "Brain dir required. Pass as arg or set EUREKA_BRAIN."}))
             sys.exit(1)

@@ -4,6 +4,7 @@ import sqlite3
 import numpy as np
 from datetime import datetime
 
+from eureka.core.db import transaction
 from eureka.core.embeddings import _unpack_vector
 
 DEFAULT_TOP_N = 5
@@ -50,23 +51,23 @@ def link_all(
         conn.execute("ALTER TABLE edges ADD COLUMN similarity REAL")
         conn.commit()
 
-    conn.execute("DELETE FROM edges")
-
     edge_count = 0
-    for i, slug in enumerate(slugs):
-        top_indices = np.argsort(-sim[i])[:top_n]
-        for j in top_indices:
-            j = int(j)
-            if j == i:
-                continue
-            similarity = float(sim[i, j])
-            if similarity < min_similarity:
-                continue
-            conn.execute(
-                "INSERT OR IGNORE INTO edges (source, target, similarity, created_at) VALUES (?, ?, ?, ?)",
-                (slug, slugs[j], round(similarity, 4), now),
-            )
-            edge_count += 1
+    with transaction(conn):
+        conn.execute("DELETE FROM edges")
 
-    conn.commit()
+        for i, slug in enumerate(slugs):
+            top_indices = np.argsort(-sim[i])[:top_n]
+            for j in top_indices:
+                j = int(j)
+                if j == i:
+                    continue
+                similarity = float(sim[i, j])
+                if similarity < min_similarity:
+                    continue
+                conn.execute(
+                    "INSERT OR IGNORE INTO edges (source, target, similarity, created_at) VALUES (?, ?, ?, ?)",
+                    (slug, slugs[j], round(similarity, 4), now),
+                )
+                edge_count += 1
+
     return edge_count

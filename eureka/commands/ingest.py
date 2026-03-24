@@ -35,7 +35,8 @@ def _generate_title(raw_text: str, llm) -> str:
         if len(title) > 80 or "\n" in title:
             return None
         return title
-    except Exception:
+    except Exception as e:
+        print(f"Title generation failed (non-fatal): {e}", file=sys.stderr, flush=True)
         return None
 
 
@@ -118,7 +119,18 @@ def run_ingest(source: str, brain_dir_path: str, deep: bool = False,
                         existing_tags.extend(t.strip() for t in raw.split(",") if t.strip())
             existing_tags = sorted(set(existing_tags))
 
-        atoms = extract_atoms(chunks, existing_tags, llm, source_type=source_type)
+        try:
+            atoms = extract_atoms(chunks, existing_tags, llm, source_type=source_type)
+        except RuntimeError as e:
+            # LLM failed — delete the source row so re-ingest is possible
+            conn = open_db(brain_dir / "brain.db")
+            try:
+                conn.execute("DELETE FROM sources WHERE id = ?", (source_id,))
+                conn.commit()
+            finally:
+                conn.close()
+            emit(envelope(False, "ingest", {"message": f"Extraction failed: {e}"}))
+            sys.exit(4)
 
         # Write each atom as .md
         atoms_dir.mkdir(parents=True, exist_ok=True)

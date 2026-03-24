@@ -15,12 +15,14 @@ import os
 import sqlite3
 import struct
 import sys
+import threading
 import time
 from pathlib import Path
 
 GEMINI_MODEL = "gemini-embedding-001"
 FASTEMBED_MODEL = "BAAI/bge-small-en-v1.5"
 
+_lock = threading.Lock()
 _backend = None  # "gemini" or "fastembed"
 _fastembed_model = None
 
@@ -34,14 +36,16 @@ def configure_backend(backend: str) -> None:
     global _backend
     if backend not in ("gemini", "fastembed"):
         raise ValueError(f"Unknown embedding backend '{backend}'. Use 'gemini' or 'fastembed'.")
-    _backend = backend
+    with _lock:
+        _backend = backend
 
 
 def _detect_backend() -> str:
     global _backend
-    if _backend is None:
-        _backend = "gemini" if _has_gemini_key() else "fastembed"
-    return _backend
+    with _lock:
+        if _backend is None:
+            _backend = "gemini" if _has_gemini_key() else "fastembed"
+        return _backend
 
 
 def _load_env_from_brain_dir(brain_dir: Path) -> None:
@@ -62,26 +66,28 @@ def _load_backend_from_config(brain_dir: Path) -> None:
     # Always load .env so GEMINI_API_KEY is available for embedding
     _load_env_from_brain_dir(brain_dir)
 
-    if _backend is not None:
-        return  # already configured
-    config_path = brain_dir / "brain.json"
-    if config_path.exists():
-        try:
-            data = json.loads(config_path.read_text())
-            chosen = data.get("embedding", {}).get("backend", "auto")
-            if chosen and chosen != "auto":
-                _backend = chosen
-                return
-        except (json.JSONDecodeError, AttributeError):
-            pass
+    with _lock:
+        if _backend is not None:
+            return  # already configured
+        config_path = brain_dir / "brain.json"
+        if config_path.exists():
+            try:
+                data = json.loads(config_path.read_text())
+                chosen = data.get("embedding", {}).get("backend", "auto")
+                if chosen and chosen != "auto":
+                    _backend = chosen
+                    return
+            except (json.JSONDecodeError, AttributeError):
+                pass
 
 
 def _get_fastembed():
     global _fastembed_model
-    if _fastembed_model is None:
-        from fastembed import TextEmbedding
-        _fastembed_model = TextEmbedding(FASTEMBED_MODEL)
-    return _fastembed_model
+    with _lock:
+        if _fastembed_model is None:
+            from fastembed import TextEmbedding
+            _fastembed_model = TextEmbedding(FASTEMBED_MODEL)
+        return _fastembed_model
 
 
 def embed_text(text: str) -> list[float]:
@@ -157,22 +163,25 @@ def ensure_embeddings(conn: sqlite3.Connection, brain_dir: Path,
 
     backend = _detect_backend()
 
+    from eureka.core.db import transaction
+
     # Batch path for Gemini (5+ atoms)
     if backend == "gemini" and len(to_embed) >= 5:
         from eureka.core.embeddings_gemini import embed_batch
         texts = [row["body"] for row in to_embed]
         vectors = embed_batch(texts)
-        for row, vec in zip(to_embed, vectors):
-            blob = _pack_vector(vec)
-            conn.execute(
-                "INSERT OR REPLACE INTO embeddings (slug, model, vector, updated) VALUES (?, ?, ?, ?)",
-                (row["slug"], model_name, blob, time.time()),
-            )
-        conn.commit()
+        with transaction(conn):
+            for row, vec in zip(to_embed, vectors):
+                blob = _pack_vector(vec)
+                conn.execute(
+                    "INSERT OR REPLACE INTO embeddings (slug, model, vector, updated) VALUES (?, ?, ?, ?)",
+                    (row["slug"], model_name, blob, time.time()),
+                )
         print(f"  Done. {len(to_embed)} atoms embedded (batch).", file=sys.stderr, flush=True)
         return
 
     # Sequential path (FastEmbed or small Gemini batches)
+    # Commit in batches of 20 for progress feedback, but each batch is atomic
     for i, row in enumerate(to_embed):
         vec = embed_text(row["body"])
         blob = _pack_vector(vec)
