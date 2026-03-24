@@ -51,7 +51,7 @@ def main():
     command = args[0]
 
     if command in ("--version", "-V"):
-        print("eureka 0.2.0")
+        print("eureka 0.3.0")
         sys.exit(0)
 
     if command in ("--help", "-h", "help"):
