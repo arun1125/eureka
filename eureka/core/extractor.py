@@ -64,21 +64,57 @@ def parse_extraction_response(text: str) -> list[dict]:
     return atoms
 
 
-def extract_atoms(chunks: list[str], existing_tags: list[str], llm) -> list[dict]:
-    """Build extraction prompt, call LLM, return parsed atoms."""
-    chunk_text = "\n\n---\n\n".join(chunks)
-    prompt = f"""Extract atomic concepts from the following text. For each concept, output:
+PAPER_EXTRACTION_PROMPT = """You are extracting atomic claims from a scientific paper. For each claim, output:
+- A title as an H1 heading (# Title) — a short opinionated assertion, not a description
+- A body paragraph with the specific claim, evidence, conditions, and limitations
+- Wikilinks to related concepts as [[slug]]
+- A tags line with comma-separated tags. ALWAYS include one of these claim types as the FIRST tag:
+  - finding: empirical results ("X increases Y by Z% under condition W")
+  - method: techniques or approaches ("We use T to measure M")
+  - hypothesis: proposed explanations ("We hypothesize that...")
+  - limitation: known constraints ("This does not account for...")
+  - open-question: future work or unknowns ("Future work should explore...")
+
+Reuse existing tags where appropriate: {existing_tags}
+
+Rules:
+- State claims as the authors would — no editorializing or hindsight
+- Be precise: include numbers, conditions, and scope
+- Each atom should be independently understandable
+- Separate each atom with --- on its own line
+
+Text:
+{chunk_text}"""
+
+
+DEFAULT_EXTRACTION_PROMPT = """Extract atomic concepts from the following text. For each concept, output:
 - A title as an H1 heading (# Title)
 - A body paragraph explaining the concept
 - Any wikilinks to related concepts as [[slug]]
 - A tags line with comma-separated tags
 
-Reuse existing tags where appropriate: {', '.join(existing_tags)}
+Reuse existing tags where appropriate: {existing_tags}
 
 Separate each atom with --- on its own line.
 
 Text:
 {chunk_text}"""
+
+
+def extract_atoms(chunks: list[str], existing_tags: list[str], llm,
+                  source_type: str = "book") -> list[dict]:
+    """Build extraction prompt, call LLM, return parsed atoms.
+
+    Args:
+        source_type: "paper" uses claim-focused prompt, anything else uses default.
+    """
+    chunk_text = "\n\n---\n\n".join(chunks)
+    tags_str = ", ".join(existing_tags)
+
+    if source_type == "paper":
+        prompt = PAPER_EXTRACTION_PROMPT.format(existing_tags=tags_str, chunk_text=chunk_text)
+    else:
+        prompt = DEFAULT_EXTRACTION_PROMPT.format(existing_tags=tags_str, chunk_text=chunk_text)
 
     response = llm.generate(prompt)
     return parse_extraction_response(response)

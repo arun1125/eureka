@@ -127,6 +127,9 @@ class PaperReader:
             # Skip affiliations
             if re.match(r"^(University|Google|Microsoft|Meta|OpenAI|DeepMind)", stripped):
                 continue
+            # Skip author lines (contain superscript markers, many commas, or † ‡ * symbols)
+            if re.search(r"\d[,†‡∗\*]", stripped) or stripped.count(",") >= 4:
+                continue
             # Skip lines with boilerplate words
             words_lower = set(stripped.lower().split())
             if words_lower & boilerplate_words:
@@ -134,7 +137,8 @@ class PaperReader:
             # Title should start with a capital letter and have mostly capitalized words
             words = stripped.split()
             cap_count = sum(1 for w in words if w[0].isupper())
-            if cap_count >= len(words) * 0.5 and len(words) >= 3:
+            # Short titles (1-2 words) are fine if they're on the first page and capitalized
+            if cap_count >= len(words) * 0.5:
                 return stripped
 
         # Phase 2: fallback — just grab the first non-trivial line
@@ -217,7 +221,7 @@ class PaperReader:
         return sections
 
     def _parse_references(self, ref_text: str, all_lines: list[str]) -> list[dict]:
-        """Parse numbered references like [1] Author, Author. Title. Venue, year."""
+        """Parse references in numbered [1] or APA (author-first) format."""
         # If we didn't find a clean references section, try to find it in all_lines
         if not ref_text:
             ref_text = self._find_references_in_lines(all_lines)
@@ -225,7 +229,16 @@ class PaperReader:
         if not ref_text:
             return []
 
-        # Merge multi-line references: a new entry starts with [N]
+        # Try numbered format first
+        references = self._parse_numbered_refs(ref_text)
+        if references:
+            return references
+
+        # Fall back to APA/author-first format
+        return self._parse_apa_refs(ref_text)
+
+    def _parse_numbered_refs(self, ref_text: str) -> list[dict]:
+        """Parse [1]-style numbered references."""
         entries = []
         current_num = None
         current_text = ""
@@ -239,7 +252,6 @@ class PaperReader:
                 current_num = int(m.group(1))
                 current_text = m.group(2)
             elif current_num is not None and stripped:
-                # Skip page numbers that appear alone
                 if re.match(r"^\d+$", stripped):
                     continue
                 current_text += " " + stripped
@@ -247,13 +259,82 @@ class PaperReader:
         if current_num is not None:
             entries.append((current_num, current_text.strip()))
 
-        # Parse each entry
         references = []
         for num, text in entries:
             ref = self._parse_single_reference(num, text)
             references.append(ref)
+        return references
+
+    def _parse_apa_refs(self, ref_text: str) -> list[dict]:
+        """Parse APA/author-first references (no [N] numbering).
+
+        Strategy: entries are separated by blank lines, or each entry starts
+        with a line matching 'AuthorLastName, FirstInitial.' pattern.
+        """
+        # Always use the year-boundary splitter — it handles both blank-line-separated
+        # and contiguous formats correctly.
+        blocks = self._split_contiguous_apa(ref_text)
+
+        references = []
+        for i, block in enumerate(blocks):
+            text = " ".join(block.split())  # normalize whitespace
+            if len(text) < 20:
+                continue
+            # Skip page numbers, section headers
+            if re.match(r"^\d+$", text.strip()):
+                continue
+            if re.match(r"^(Appendix|Supplementary|Figure|Table)\b", text):
+                break
+
+            ref = self._parse_single_reference(i + 1, text)
+            if ref.get("title") and len(ref["title"]) > 5:
+                references.append(ref)
 
         return references
+
+    def _split_contiguous_apa(self, ref_text: str) -> list[str]:
+        """Split contiguous APA references where entries aren't separated by blank lines.
+
+        Each entry ends with a year followed by a period (e.g. ', 2024.').
+        A new entry starts on the next non-empty line after that.
+        """
+        lines = ref_text.split("\n")
+        blocks = []
+        current_lines = []
+
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                # Blank line — might be entry boundary
+                if current_lines:
+                    merged = " ".join(current_lines)
+                    # Check if we ended an entry (year at end)
+                    if re.search(r"(19|20)\d{2}[a-z]?\.\s*$", merged):
+                        blocks.append(merged)
+                        current_lines = []
+                        continue
+                continue
+
+            # Skip standalone page numbers
+            if re.match(r"^\d+$", stripped):
+                continue
+
+            # Check if previous accumulated text ended with year. pattern
+            # and this line starts a new author (capital letter)
+            if current_lines:
+                merged = " ".join(current_lines)
+                if (re.search(r"(19|20)\d{2}[a-z]?\.\s*$", merged)
+                        and re.match(r"^[A-Z]", stripped)):
+                    blocks.append(merged)
+                    current_lines = [stripped]
+                    continue
+
+            current_lines.append(stripped)
+
+        if current_lines:
+            blocks.append(" ".join(current_lines))
+
+        return blocks
 
     def _find_references_in_lines(self, lines: list[str]) -> str:
         """Fallback: scan all lines for the references section."""

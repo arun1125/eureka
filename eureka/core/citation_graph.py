@@ -90,3 +90,93 @@ def build_reference_stubs(conn: sqlite3.Connection, references: list[dict],
 
     conn.commit()
     return {"stubs_created": stubs_created, "edges_created": edges_created}
+
+
+def enrich_stubs(conn: sqlite3.Connection, references: list[dict],
+                 progress_callback=None) -> dict:
+    """Enrich reference stubs with Semantic Scholar abstracts and metadata.
+
+    Finds existing stubs (tagged 'reference-stub'), enriches via S2 API,
+    updates body with abstract, returns counts.
+    """
+    from eureka.core.semantic_scholar import enrich_all_references
+
+    _atbl = atom_table(conn)
+
+    # Get all reference-stub slugs
+    stub_tag = conn.execute("SELECT id FROM tags WHERE name = 'reference-stub'").fetchone()
+    if not stub_tag:
+        return {"enriched": 0, "not_found": 0, "already_enriched": 0}
+
+    stubs = conn.execute(
+        f"SELECT n.slug, n.body FROM {_atbl} n "
+        f"INNER JOIN note_tags nt ON nt.slug = n.slug "
+        f"WHERE nt.tag_id = ?",
+        (stub_tag["id"],),
+    ).fetchall()
+
+    # Skip stubs that already have an abstract (body > 200 chars = likely enriched)
+    to_enrich = []
+    already_enriched = 0
+    for stub in stubs:
+        if len(stub["body"] or "") > 200:
+            already_enriched += 1
+        else:
+            to_enrich.append(stub)
+
+    if not to_enrich:
+        return {"enriched": 0, "not_found": 0, "already_enriched": already_enriched}
+
+    # Build reference list from stubs for S2 lookup
+    refs_for_s2 = []
+    for stub in to_enrich:
+        # Extract arxiv_id from body if present
+        arxiv_id = None
+        body = stub["body"] or ""
+        for line in body.split("\n"):
+            if line.startswith("arXiv:"):
+                arxiv_id = line.split(":", 1)[1].strip()
+        # Title from slug
+        title = stub["slug"].replace("-", " ")
+        refs_for_s2.append({"title": title, "arxiv_id": arxiv_id, "slug": stub["slug"]})
+
+    enriched_data = enrich_all_references(refs_for_s2, progress_callback=progress_callback)
+
+    enriched_count = 0
+    not_found = 0
+    for ref_data, stub_info in zip(enriched_data, refs_for_s2):
+        if not ref_data.get("enriched"):
+            not_found += 1
+            continue
+
+        # Build enriched body
+        parts = []
+        if ref_data.get("abstract"):
+            parts.append(ref_data["abstract"])
+        if ref_data.get("authors"):
+            parts.append(f"\nAuthors: {', '.join(ref_data['authors'])}")
+        if ref_data.get("year"):
+            parts.append(f"Year: {ref_data['year']}")
+        if ref_data.get("citation_count"):
+            parts.append(f"Citations: {ref_data['citation_count']}")
+        if ref_data.get("tldr"):
+            parts.append(f"\nTLDR: {ref_data['tldr']}")
+        if ref_data.get("doi"):
+            parts.append(f"DOI: {ref_data['doi']}")
+        if ref_data.get("arxiv_id"):
+            parts.append(f"arXiv: {ref_data['arxiv_id']}")
+
+        new_body = "\n".join(parts)
+        slug = stub_info["slug"]
+
+        conn.execute(f"UPDATE {_atbl} SET body = ? WHERE slug = ?", (new_body, slug))
+        # Update FTS
+        conn.execute("DELETE FROM notes_fts WHERE slug = ?", (slug,))
+        conn.execute(
+            "INSERT INTO notes_fts (slug, body, tags) VALUES (?, ?, ?)",
+            (slug, new_body, "reference-stub, paper"),
+        )
+        enriched_count += 1
+
+    conn.commit()
+    return {"enriched": enriched_count, "not_found": not_found, "already_enriched": already_enriched}

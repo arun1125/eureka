@@ -15,17 +15,26 @@ REQUEST_DELAY = 3.0
 MAX_RETRIES = 3
 
 
+_rate_limit_hits = 0  # track consecutive rate limits across calls
+
+
 def _fetch(url: str) -> dict | None:
     """Fetch a URL with retries and rate limit handling."""
+    global _rate_limit_hits
     for attempt in range(MAX_RETRIES):
         try:
             req = urllib.request.Request(url)
             req.add_header("User-Agent", "Eureka/0.1 (research tool)")
             resp = urllib.request.urlopen(req, timeout=30)
+            _rate_limit_hits = 0  # reset on success
             return json.loads(resp.read().decode())
         except urllib.error.HTTPError as e:
             if e.code == 429:
-                wait = (attempt + 1) * 30
+                _rate_limit_hits += 1
+                if _rate_limit_hits >= 6:
+                    print("  S2 rate limit exceeded repeatedly — skipping remaining enrichment.", file=sys.stderr, flush=True)
+                    return None
+                wait = (attempt + 1) * 10
                 print(f"  Rate limited, waiting {wait}s...", file=sys.stderr, flush=True)
                 time.sleep(wait)
             elif e.code == 404:

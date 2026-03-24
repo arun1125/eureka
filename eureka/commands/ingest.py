@@ -13,18 +13,15 @@ from eureka.readers.base import detect_reader
 def get_llm(brain_dir: Path):
     """Return an LLM instance for extraction. Monkeypatch this in tests."""
     try:
-        from eureka.core.llm import get_llm as _get_llm, GeminiCLI, load_llm_config
-        import shutil
+        from eureka.core.llm import get_llm as _get_llm, load_llm_config
         llm = _get_llm(config=load_llm_config(brain_dir))
-        if isinstance(llm, GeminiCLI) and shutil.which("gemini") is None:
-            print("Warning: gemini CLI not found on PATH. LLM disabled.", file=sys.stderr)
-            return None
         return llm
-    except Exception:
+    except RuntimeError as e:
+        print(f"LLM error: {e}", file=sys.stderr, flush=True)
         return None
 
 
-def run_ingest(source: str, brain_dir_path: str) -> None:
+def run_ingest(source: str, brain_dir_path: str, deep: bool = False) -> None:
     brain_dir = Path(brain_dir_path)
 
     # Validate source exists (for file paths, not URLs)
@@ -87,7 +84,7 @@ def run_ingest(source: str, brain_dir_path: str) -> None:
                         existing_tags.extend(t.strip() for t in raw.split(",") if t.strip())
             existing_tags = sorted(set(existing_tags))
 
-        atoms = extract_atoms(chunks, existing_tags, llm)
+        atoms = extract_atoms(chunks, existing_tags, llm, source_type=source_type)
 
         # Write each atom as .md
         atoms_dir.mkdir(parents=True, exist_ok=True)
@@ -118,19 +115,63 @@ def run_ingest(source: str, brain_dir_path: str) -> None:
         finally:
             conn.close()
 
-    # Paper-specific: create reference stubs and citation edges
+    # Paper-specific: create reference stubs, citation edges, and optional enrichment
     stubs_info = {}
+    enrich_info = {}
     if source_type == "paper" and result.get("references"):
         conn = open_db(brain_dir / "brain.db")
         try:
-            from eureka.core.citation_graph import build_reference_stubs
+            from eureka.core.citation_graph import build_reference_stubs, enrich_stubs
             print(f"Building citation graph ({len(result['references'])} references)...",
                   file=sys.stderr, flush=True)
             stubs_info = build_reference_stubs(conn, result["references"], atom_slugs)
             print(f"Created {stubs_info['stubs_created']} stubs, "
                   f"{stubs_info['edges_created']} citation edges.", file=sys.stderr, flush=True)
+
+            # Enrich stubs with Semantic Scholar abstracts
+            print("Enriching reference stubs via Semantic Scholar...", file=sys.stderr, flush=True)
+            enrich_info = enrich_stubs(
+                conn, result["references"],
+                progress_callback=lambda i, n, t: print(f"  [{i}/{n}] {t}", file=sys.stderr, flush=True),
+            )
+            print(f"Enriched {enrich_info.get('enriched', 0)} stubs, "
+                  f"{enrich_info.get('not_found', 0)} not found.", file=sys.stderr, flush=True)
+
+            # Re-embed enriched stubs
+            if enrich_info.get("enriched", 0) > 0:
+                from eureka.core.embeddings import ensure_embeddings
+                from eureka.core.linker import link_all
+                print("Re-embedding enriched stubs...", file=sys.stderr, flush=True)
+                ensure_embeddings(conn, brain_dir)
+                link_all(conn)
         finally:
             conn.close()
+
+    # Deep mode: recursively ingest referenced papers that have arXiv IDs
+    deep_info = {}
+    if deep and source_type == "paper" and result.get("references"):
+        deep_fetched = 0
+        deep_skipped = 0
+        deep_failed = 0
+        refs_with_arxiv = [r for r in result["references"] if r.get("arxiv_id")]
+        print(f"Deep mode: {len(refs_with_arxiv)} references have arXiv IDs.", file=sys.stderr, flush=True)
+        for i, ref in enumerate(refs_with_arxiv):
+            arxiv_src = f"arxiv:{ref['arxiv_id']}"
+            # Check if already ingested
+            conn = open_db(brain_dir / "brain.db")
+            existing = conn.execute("SELECT id FROM sources WHERE url = ?", (arxiv_src,)).fetchone()
+            conn.close()
+            if existing:
+                deep_skipped += 1
+                continue
+            print(f"  [{i+1}/{len(refs_with_arxiv)}] Fetching {arxiv_src}...", file=sys.stderr, flush=True)
+            try:
+                run_ingest(arxiv_src, brain_dir_path, deep=False)  # never recurse deeper
+                deep_fetched += 1
+            except Exception as e:
+                print(f"    Failed: {e}", file=sys.stderr, flush=True)
+                deep_failed += 1
+        deep_info = {"deep_fetched": deep_fetched, "deep_skipped": deep_skipped, "deep_failed": deep_failed}
 
     emit(envelope(True, "ingest", {
         "source": {
@@ -142,4 +183,6 @@ def run_ingest(source: str, brain_dir_path: str) -> None:
         },
         "atoms_created": atoms_created,
         **stubs_info,
+        "enrichment": enrich_info,
+        **deep_info,
     }))
