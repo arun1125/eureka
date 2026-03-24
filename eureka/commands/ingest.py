@@ -39,11 +39,17 @@ def run_ingest(source: str, brain_dir_path: str, deep: bool = False) -> None:
     chunks = result["chunks"]
     raw_text = "\n\n".join(chunks)
 
+    # Store relative path for local files, original string for URLs/arxiv
+    if not is_url and not is_arxiv:
+        source_url = Path(source).name
+    else:
+        source_url = source
+
     # Open DB
     conn = open_db(brain_dir / "brain.db")
 
     # Check idempotency — same url means already ingested
-    existing = conn.execute("SELECT id, title, type, url, chunk_count FROM sources WHERE url = ?", (source,)).fetchone()
+    existing = conn.execute("SELECT id, title, type, url, chunk_count FROM sources WHERE url = ?", (source_url,)).fetchone()
     if existing:
         emit(envelope(True, "ingest", {
             "already_ingested": True,
@@ -62,7 +68,7 @@ def run_ingest(source: str, brain_dir_path: str, deep: bool = False) -> None:
     now = datetime.now(timezone.utc).isoformat()
     conn.execute(
         "INSERT INTO sources (title, type, url, ingested_at, chunk_count, raw_text) VALUES (?, ?, ?, ?, ?, ?)",
-        (title, source_type, source, now, len(chunks), raw_text),
+        (title, source_type, source_url, now, len(chunks), raw_text),
     )
     conn.commit()
     source_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -199,7 +205,7 @@ def run_ingest(source: str, brain_dir_path: str, deep: bool = False) -> None:
             "id": source_id,
             "title": title,
             "type": source_type,
-            "url": source,
+            "url": source_url,
             "chunk_count": len(chunks),
         },
         "atoms_created": atoms_created,
