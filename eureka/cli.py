@@ -70,6 +70,8 @@ def main():
             "  profile [--answers ..]  Onboarding questions & profile\n"
             "  reflect                 Generate a reflection\n"
             "  enrich                  Enrich reference stubs via Semantic Scholar\n"
+            "  sync [--dry-run]        Sync .md files with brain.db\n"
+            "  lineage <slug>          Trace source→atom→molecule chain\n"
             "  serve [--port N]        Start visual dashboard\n\n"
             "Options:\n"
             "  --brain-dir <dir>       Brain directory (or set EUREKA_BRAIN)\n"
@@ -287,6 +289,41 @@ def main():
         result = reflect(conn, Path(brain_dir))
         emit(envelope(True, "reflect", result))
         conn.close()
+    elif command == "sync":
+        brain_dir = _get_brain_dir(args) or _get_positional_brain_dir(args)
+        if brain_dir is None:
+            emit(envelope(False, "sync", {"message": "Brain dir required. Pass --brain-dir or set EUREKA_BRAIN."}))
+            sys.exit(1)
+        from eureka.core.db import open_db
+        from eureka.core.sync import run_sync
+        from pathlib import Path
+        conn = open_db(brain_dir)
+        try:
+            result = run_sync(conn, Path(brain_dir), dry_run="--dry-run" in args)
+            emit(envelope(True, "sync", result))
+        finally:
+            conn.close()
+    elif command == "lineage":
+        if len(args) < 2:
+            emit(envelope(False, "lineage", {"message": "Usage: eureka lineage <slug> [--brain-dir <dir>]"}))
+            sys.exit(1)
+        slug = args[1]
+        brain_dir = _get_brain_dir(args)
+        if brain_dir is None:
+            emit(envelope(False, "lineage", {"message": "Brain dir required. Pass --brain-dir or set EUREKA_BRAIN."}))
+            sys.exit(1)
+        from eureka.core.db import open_db
+        from eureka.core.lineage import trace_lineage
+        conn = open_db(brain_dir)
+        try:
+            result = trace_lineage(conn, slug)
+            if result is None:
+                emit(envelope(False, "lineage", {"message": f"Slug '{slug}' not found in atoms or molecules."}))
+                sys.exit(3)
+            else:
+                emit(envelope(True, "lineage", result))
+        finally:
+            conn.close()
     elif command == "status":
         brain_dir = _get_brain_dir(args) or _get_positional_brain_dir(args)
         if brain_dir is None:

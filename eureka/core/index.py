@@ -1,5 +1,6 @@
 """Index — sync .md files into the database."""
 
+import hashlib
 import json
 import sqlite3
 from pathlib import Path
@@ -12,6 +13,7 @@ def rebuild_index(conn: sqlite3.Connection, brain_dir: Path) -> None:
     """Glob all .md files in brain_dir/atoms/, parse and upsert into DB.
 
     Writes to whichever table the brain uses (atoms or notes).
+    Preserves source_id and other lineage columns on existing atoms.
     """
     atoms_dir = brain_dir / "atoms"
     if not atoms_dir.is_dir():
@@ -22,9 +24,16 @@ def rebuild_index(conn: sqlite3.Connection, brain_dir: Path) -> None:
     # Parse all atoms first so we know which slugs exist
     notes = []
     for md_path in sorted(atoms_dir.glob("*.md")):
-        notes.append(parse_note(md_path))
+        note = parse_note(md_path)
+        note["file_hash"] = hashlib.sha256(md_path.read_bytes()).hexdigest()
+        notes.append(note)
 
     slug_set = {n["slug"] for n in notes}
+
+    # Get existing slugs so we can UPDATE instead of INSERT OR REPLACE
+    existing_slugs = {
+        r[0] for r in conn.execute(f"SELECT slug FROM {_atbl}").fetchall()
+    }
 
     # Clear edges, note_tags, and FTS before rebuild (idempotent)
     conn.execute("DELETE FROM edges")
@@ -34,21 +43,39 @@ def rebuild_index(conn: sqlite3.Connection, brain_dir: Path) -> None:
     for note in notes:
         word_count = len(note["body"].split())
 
-        # Upsert atom into the correct table
-        if _atbl == "notes":
-            conn.execute(
-                """INSERT OR REPLACE INTO notes
-                   (slug, type, tags, body, word_count, mtime)
-                   VALUES (?, 'atom', ?, ?, ?, datetime('now'))""",
-                (note["slug"], json.dumps(note["tags"]), note["body"], word_count),
-            )
+        if note["slug"] in existing_slugs:
+            # UPDATE existing atom — preserves source_id and created_at
+            if _atbl == "notes":
+                conn.execute(
+                    """UPDATE notes SET type='atom', tags=?, body=?,
+                       word_count=?, mtime=datetime('now') WHERE slug=?""",
+                    (json.dumps(note["tags"]), note["body"], word_count, note["slug"]),
+                )
+            else:
+                conn.execute(
+                    """UPDATE atoms SET title=?, body=?, body_hash=?,
+                       word_count=?, file_hash=?, updated_at=datetime('now')
+                       WHERE slug=?""",
+                    (note["title"], note["body"], note["body_hash"],
+                     word_count, note["file_hash"], note["slug"]),
+                )
         else:
-            conn.execute(
-                """INSERT OR REPLACE INTO atoms
-                   (slug, title, body, body_hash, word_count, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))""",
-                (note["slug"], note["title"], note["body"], note["body_hash"], word_count),
-            )
+            # INSERT new atom
+            if _atbl == "notes":
+                conn.execute(
+                    """INSERT INTO notes
+                       (slug, type, tags, body, word_count, mtime)
+                       VALUES (?, 'atom', ?, ?, ?, datetime('now'))""",
+                    (note["slug"], json.dumps(note["tags"]), note["body"], word_count),
+                )
+            else:
+                conn.execute(
+                    """INSERT INTO atoms
+                       (slug, title, body, body_hash, word_count, file_hash, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))""",
+                    (note["slug"], note["title"], note["body"], note["body_hash"],
+                     word_count, note["file_hash"]),
+                )
 
         # Insert edges — only if target exists as an atom
         for wikilink in note["wikilinks"]:

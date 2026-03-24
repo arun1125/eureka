@@ -105,12 +105,33 @@ def run_ingest(source: str, brain_dir_path: str, deep: bool = False) -> None:
             from eureka.core.index import rebuild_index
             from eureka.core.embeddings import ensure_embeddings
             from eureka.core.linker import link_all
+            from eureka.core.db import log_operation
             print(f"Indexing {atoms_created} atoms...", file=sys.stderr, flush=True)
             rebuild_index(conn, brain_dir)
+
+            # Wire source_id to the atoms we just created
+            for slug in atom_slugs:
+                conn.execute(
+                    "UPDATE atoms SET source_id = ? WHERE slug = ? AND source_id IS NULL",
+                    (source_id, slug),
+                )
+            # Update source atom count
+            conn.execute(
+                "UPDATE sources SET atom_count = ? WHERE id = ?",
+                (atoms_created, source_id),
+            )
+            conn.commit()
+
             print("Embedding...", file=sys.stderr, flush=True)
             ensure_embeddings(conn, brain_dir)
             print("Linking...", file=sys.stderr, flush=True)
             link_all(conn)
+
+            log_operation(conn, "ingest", detail={
+                "source_id": source_id, "source": source,
+                "atoms_created": atoms_created,
+            })
+            conn.commit()
             print("Done.", file=sys.stderr, flush=True)
         finally:
             conn.close()

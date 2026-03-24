@@ -62,16 +62,21 @@ def run_discover(brain_dir_path: str, method: str = "all", count: int = 10) -> N
         if len(candidates) >= count:
             break
 
-    # Log discovery run
+    # Log discovery run and capture run_id
     conn.execute(
         "INSERT INTO discovery_runs (method, timestamp, candidates_found) VALUES (?, ?, ?)",
         (method, now, len(candidates)),
     )
+    run_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.commit()
 
     # If LLM available and candidates found, write molecules
     llm = get_llm(brain_dir)
     molecules_written = 0
+    llm_model_name = None
+    if llm is not None:
+        raw_model = getattr(llm, "model", None)
+        llm_model_name = str(raw_model) if raw_model else None
 
     if llm is not None and candidates:
         mol_dir = brain_dir / "molecules"
@@ -146,28 +151,58 @@ def run_discover(brain_dir_path: str, method: str = "all", count: int = 10) -> N
             body = "\n".join(body_lines).strip()
             slug = _slugify(title) if title else f"molecule-{now}-{molecules_written}"
 
-            # Store in DB
+            # Store in DB with lineage
+            import hashlib
+            file_content = response.strip() + "\n"
+            file_hash = hashlib.sha256(file_content.encode()).hexdigest()
             conn.execute(
-                "INSERT OR REPLACE INTO molecules (slug, title, method, score, review_status, eli5, body, created_at) "
-                "VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)",
-                (slug, title, method_name, score, eli5, body, now),
+                "INSERT OR REPLACE INTO molecules "
+                "(slug, title, method, score, review_status, eli5, body, created_at, "
+                " discovery_run_id, candidate_score, llm_model, file_hash) "
+                "VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)",
+                (slug, title, method_name, score, eli5, body, now,
+                 run_id, score, llm_model_name, file_hash),
             )
+            # Determine atom roles from candidate metadata
+            bridge_atom = candidate.get("bridge")
+            hinge_atom = candidate.get("hinge")
             for atom_slug in atom_slugs:
+                role = "member"
+                if atom_slug == bridge_atom:
+                    role = "bridge"
+                elif atom_slug == hinge_atom:
+                    role = "hinge"
                 conn.execute(
-                    "INSERT OR IGNORE INTO molecule_atoms (molecule_slug, atom_slug) VALUES (?, ?)",
-                    (slug, atom_slug),
+                    "INSERT OR IGNORE INTO molecule_atoms (molecule_slug, atom_slug, role) VALUES (?, ?, ?)",
+                    (slug, atom_slug, role),
                 )
             conn.commit()
 
             # Write .md file
             md_path = mol_dir / f"{slug}.md"
-            md_path.write_text(response.strip() + "\n")
+            md_path.write_text(file_content)
             molecules_written += 1
 
+    # Update discovery run with actual molecules written
+    conn.execute(
+        "UPDATE discovery_runs SET candidates_accepted = ? WHERE id = ?",
+        (molecules_written, run_id),
+    )
+
+    # Log operation
+    from eureka.core.db import log_operation
+    log_operation(conn, "discover", detail={
+        "run_id": run_id, "method": method,
+        "candidates_found": len(candidates),
+        "molecules_written": molecules_written,
+        "llm_model": llm_model_name,
+    })
+    conn.commit()
     conn.close()
 
     emit(envelope(True, "discover", {
         "candidates_found": len(candidates),
         "molecules_written": molecules_written,
         "method": method,
+        "discovery_run_id": run_id,
     }))

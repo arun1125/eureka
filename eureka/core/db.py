@@ -114,19 +114,63 @@ def open_db(db_path: Path) -> sqlite3.Connection:
             timestamp TEXT DEFAULT (datetime('now'))
         );
         CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts4(slug, body, tags);
+        CREATE TABLE IF NOT EXISTS operations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            type TEXT NOT NULL,
+            status TEXT DEFAULT 'ok',
+            detail TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
     """)
     # Migrate: add similarity column to edges if missing (pre-existing databases)
     cols = {r[1] for r in conn.execute("PRAGMA table_info(edges)").fetchall()}
     if "similarity" not in cols:
         conn.execute("ALTER TABLE edges ADD COLUMN similarity REAL")
 
+    # Migrate: lineage tracking columns
+    _migrate_lineage(conn)
+
     # Migrate: sync notes.tags JSON column → tags/note_tags normalized tables.
-    # The notes table (from SecondBrainKit) stores tags as JSON arrays.
-    # The tags/note_tags tables are the normalized form queried everywhere.
     _sync_note_tags(conn)
 
     conn.commit()
     return conn
+
+
+def _migrate_lineage(conn: sqlite3.Connection) -> None:
+    """Add lineage tracking columns to existing tables."""
+    # atoms: source_id + file_hash
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(atoms)").fetchall()}
+    if "source_id" not in cols:
+        conn.execute("ALTER TABLE atoms ADD COLUMN source_id INTEGER REFERENCES sources(id)")
+    if "file_hash" not in cols:
+        conn.execute("ALTER TABLE atoms ADD COLUMN file_hash TEXT")
+
+    # molecules: discovery_run_id + generation metadata
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(molecules)").fetchall()}
+    if "discovery_run_id" not in cols:
+        conn.execute("ALTER TABLE molecules ADD COLUMN discovery_run_id INTEGER REFERENCES discovery_runs(id)")
+    if "candidate_score" not in cols:
+        conn.execute("ALTER TABLE molecules ADD COLUMN candidate_score REAL")
+    if "llm_model" not in cols:
+        conn.execute("ALTER TABLE molecules ADD COLUMN llm_model TEXT")
+    if "file_hash" not in cols:
+        conn.execute("ALTER TABLE molecules ADD COLUMN file_hash TEXT")
+
+    # molecule_atoms: role
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(molecule_atoms)").fetchall()}
+    if "role" not in cols:
+        conn.execute("ALTER TABLE molecule_atoms ADD COLUMN role TEXT DEFAULT 'member'")
+
+
+def log_operation(conn: sqlite3.Connection, op_type: str, *,
+                  status: str = "ok", detail: dict = None) -> None:
+    """Log an operation to the operations table."""
+    import json
+    conn.execute(
+        "INSERT INTO operations (type, status, detail) VALUES (?, ?, ?)",
+        (op_type, status, json.dumps(detail) if detail else None),
+    )
 
 
 def _sync_note_tags(conn: sqlite3.Connection) -> None:
