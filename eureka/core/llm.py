@@ -99,11 +99,14 @@ class ClaudeCLI:
         # Strip env vars that cause cascade/blocking in nested claude calls
         env = {k: v for k, v in __import__("os").environ.items()
                if k not in ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID")}
+        # Clean prompt: remove null bytes, pass via stdin to avoid arg size limits
+        clean_prompt = prompt.replace("\x00", "")
         result = subprocess.run(
-            ["claude", "-p", "--model", self.model, prompt],
+            ["claude", "-p", "--model", self.model],
+            input=clean_prompt,
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=300,
             env=env,
         )
         if result.returncode != 0:
@@ -132,7 +135,13 @@ def load_llm_config(brain_dir) -> dict:
     config_path = brain_path / "brain.json"
     if config_path.exists():
         try:
-            return json.loads(config_path.read_text()).get("llm", {})
+            data = json.loads(config_path.read_text())
+            # Support both top-level and nested "llm" config
+            if "llm" in data:
+                return data["llm"]
+            if "provider" in data:
+                return data  # top-level config
+            return {}
         except (json.JSONDecodeError, KeyError):
             return {}
     return {}
@@ -153,13 +162,17 @@ KNOWN_BASE_URLS = {
 
 
 def get_llm(config: dict = None):
-    """Return the LLM client.
+    """Return the LLM client, or None if no provider can be initialized.
 
     Args:
         config: Optional dict with 'provider', 'model', 'base_url', 'api_key' keys
                 (from brain.json's "llm" section). If None, uses env vars only.
+
+    When a provider is explicitly configured but missing its API key,
+    this raises RuntimeError instead of silently falling through.
     """
     import os
+    import shutil
 
     config = config or {}
     provider = config.get("provider", "").lower()
@@ -171,36 +184,74 @@ def get_llm(config: dict = None):
     openai_key = os.environ.get("OPENAI_API_KEY")
     kimi_key = os.environ.get("KIMI_API_KEY") or os.environ.get("MOONSHOT_API_KEY")
 
-    # Config-specified provider
+    # ── Explicit provider from config ──────────────────────────
     if provider == "claude-cli":
+        if not shutil.which("claude"):
+            raise RuntimeError(
+                "Provider 'claude-cli' configured but `claude` not found on PATH. "
+                "Install Claude Code or run `eureka setup` to pick a different provider."
+            )
         return ClaudeCLI(model=model or "haiku")
+
     if provider == "claude":
         key = config_key or claude_key
-        if key:
-            return Claude(key, model=model or "claude-haiku-4-5-20251001")
+        if not key:
+            raise RuntimeError(
+                "Provider 'claude' configured but no API key found. "
+                "Set ANTHROPIC_API_KEY or run `eureka setup`."
+            )
+        return Claude(key, model=model or "claude-haiku-4-5-20251001")
+
     if provider == "gemini":
+        if not shutil.which("gemini"):
+            raise RuntimeError(
+                "Provider 'gemini' configured but `gemini` CLI not found on PATH."
+            )
         return GeminiCLI()
+
     if provider == "openai":
         key = config_key or openai_key
-        if key:
-            return OpenAICompatible(key, model=model or "gpt-4o-mini", base_url=base_url or KNOWN_BASE_URLS["openai"])
+        if not key:
+            raise RuntimeError(
+                "Provider 'openai' configured but no API key found. "
+                "Set OPENAI_API_KEY or run `eureka setup`."
+            )
+        return OpenAICompatible(key, model=model or "gpt-4o-mini", base_url=base_url or KNOWN_BASE_URLS["openai"])
 
     # Any known OpenAI-compatible provider
     if provider in KNOWN_BASE_URLS:
         resolved_url = base_url or KNOWN_BASE_URLS[provider]
         key = config_key or openai_key or kimi_key or ""
-        # Local providers (ollama, lmstudio) don't need a key
         if provider in ("ollama", "lmstudio"):
             key = key or "not-needed"
-        if key:
-            return OpenAICompatible(key, model=model or "default", base_url=resolved_url)
+        if not key:
+            raise RuntimeError(
+                f"Provider '{provider}' configured but no API key found. "
+                f"Run `eureka setup` to reconfigure."
+            )
+        return OpenAICompatible(key, model=model or "default", base_url=resolved_url)
 
     # Generic openai-compatible with explicit base_url
-    if provider == "openai-compatible" and base_url:
+    if provider == "openai-compatible":
+        if not base_url:
+            raise RuntimeError(
+                "Provider 'openai-compatible' configured but no base_url set. "
+                "Run `eureka setup` to reconfigure."
+            )
         key = config_key or openai_key or ""
         return OpenAICompatible(key or "not-needed", model=model or "default", base_url=base_url)
 
-    # Fallback: env var detection
+    # ── No explicit provider — auto-detect from environment ────
+    if provider:
+        # A provider was set but didn't match anything above
+        raise RuntimeError(
+            f"Unknown LLM provider '{provider}'. "
+            f"Run `eureka setup` to reconfigure."
+        )
+
+    # Auto-detect: CLI tools first, then API keys
+    if shutil.which("claude"):
+        return ClaudeCLI(model=model or "haiku")
     if claude_key:
         env_model = os.environ.get("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
         return Claude(claude_key, model=model or env_model)
@@ -208,4 +259,8 @@ def get_llm(config: dict = None):
         return OpenAICompatible(openai_key, model=model or "gpt-4o-mini")
     if kimi_key:
         return OpenAICompatible(kimi_key, model=model or "kimi-k2.5", base_url=KNOWN_BASE_URLS["kimi"])
-    return GeminiCLI()
+    if shutil.which("gemini"):
+        return GeminiCLI()
+
+    # Nothing found — return None, let caller decide
+    return None

@@ -149,19 +149,17 @@ def run_setup_noninteractive(brain_dir: str, provider: str, model: str = None,
         }))
         sys.exit(1)
 
-    # Write brain.json
+    # Write brain.json (never store API keys here — they go in .env only)
     config = _load_or_create_config(brain_path)
     config["llm"] = {"provider": resolved_provider}
     if model:
         config["llm"]["model"] = model
     if base_url:
         config["llm"]["base_url"] = base_url
-    if api_key:
-        config["llm"]["api_key"] = api_key
 
     _write_config(brain_path, config)
 
-    # Also write API key to .env if provided and we know the env var name
+    # Write API key to .env (not brain.json — .env is gitignored)
     if api_key and env_var:
         _write_env_key(brain_path, env_var, api_key)
 
@@ -265,15 +263,13 @@ def run_setup_interactive(brain_dir: str) -> None:
     elif provider == "openai-compatible":
         api_key = input("API key (leave empty if none needed): ").strip() or None
 
-    # Write config
+    # Write config (never store API keys in brain.json — they go in .env only)
     config = _load_or_create_config(brain_path)
     config["llm"] = {"provider": provider}
     if model:
         config["llm"]["model"] = model
     if base_url:
         config["llm"]["base_url"] = base_url
-    if api_key:
-        config["llm"]["api_key"] = api_key
     _write_config(brain_path, config)
 
     if api_key and env_var:

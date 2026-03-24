@@ -1,6 +1,8 @@
 """HTTP API server for the Eureka dashboard."""
 
 import json
+import sqlite3
+import sys
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -149,7 +151,8 @@ def create_app(brain_dir: str) -> dict:
                         from eureka.core.embeddings import embed_text, cosine_sim, _unpack_vector
                         try:
                             query_vec = embed_text(q)
-                        except Exception:
+                        except Exception as e:
+                            print(f"Embedding error (falling back to text search): {e}", file=sys.stderr)
                             query_vec = None
 
                         if query_vec is not None:
@@ -431,8 +434,8 @@ def create_app(brain_dir: str) -> dict:
                     try:
                         for r in conn.execute(f"SELECT slug, {_src_expr} AS source_title FROM {_atbl} WHERE {_src_expr} IS NOT NULL"):
                             source_map[r["slug"]] = r["source_title"]
-                    except Exception:
-                        pass
+                    except sqlite3.OperationalError:
+                        pass  # source column may not exist in older brains
 
                     for c in candidates:
                         atom_slugs = c["atoms"]

@@ -14,14 +14,11 @@ from eureka.core.output import emit, envelope
 def get_llm(brain_dir):
     """Return an LLM instance for molecule writing. Monkeypatch in tests."""
     try:
-        from eureka.core.llm import get_llm as _get_llm, GeminiCLI, load_llm_config
-        import shutil
+        from eureka.core.llm import get_llm as _get_llm, load_llm_config
         llm = _get_llm(config=load_llm_config(brain_dir))
-        if isinstance(llm, GeminiCLI) and shutil.which("gemini") is None:
-            print("Warning: gemini CLI not found on PATH. LLM disabled.", file=sys.stderr)
-            return None
         return llm
-    except Exception:
+    except RuntimeError as e:
+        print(f"LLM error: {e}", file=sys.stderr, flush=True)
         return None
 
 
@@ -48,7 +45,14 @@ def run_discover(brain_dir_path: str, method: str = "all", count: int = 10) -> N
     embeddings = _load_embeddings(conn)
 
     # Run discovery — skip candidates that already exist as molecules
-    all_candidates = discover_all(conn, embeddings)
+    try:
+        all_candidates = discover_all(conn, embeddings, method=method)
+    except ValueError as e:
+        conn.close()
+        emit(envelope(False, "discover", {"message": str(e)}))
+        import sys as _sys
+        _sys.exit(2)
+        return
     existing_slugs = {r["slug"] for r in conn.execute("SELECT slug FROM molecules").fetchall()}
     candidates = []
     for c in all_candidates:

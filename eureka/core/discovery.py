@@ -448,6 +448,93 @@ def find_residuals(conn, embeddings, cap=20):
     return results
 
 
+# --- Method 9: Co-citation (papers sharing references but not citing each other) ---
+
+def find_co_citations(conn, embeddings, min_shared=2, cap=20):
+    """Find pairs of paper atoms that share ≥min_shared references but aren't directly linked.
+
+    A co-citation void means two papers cite the same foundational work
+    but don't cite each other — suggesting a gap in the literature.
+    """
+    from eureka.core.db import atom_table
+
+    _atbl = atom_table(conn)
+
+    # Get reference-stub tag
+    stub_tag = conn.execute("SELECT id FROM tags WHERE name = 'reference-stub'").fetchone()
+    if not stub_tag:
+        return []
+
+    # Get all reference stubs
+    stub_slugs = {r["slug"] for r in conn.execute(
+        "SELECT slug FROM note_tags WHERE tag_id = ?", (stub_tag["id"],)
+    ).fetchall()}
+
+    if not stub_slugs:
+        return []
+
+    # Build reverse citation map: reference_stub → [atoms that cite it]
+    # Citation edges go: source_atom → reference_stub
+    ref_to_citers = defaultdict(set)
+    for row in conn.execute("SELECT source, target FROM edges"):
+        s, t = row["source"], row["target"]
+        if t in stub_slugs and s not in stub_slugs:
+            ref_to_citers[t].add(s)
+
+    # Find pairs of non-stub atoms that share references
+    pair_shared = defaultdict(set)  # (atomA, atomB) → set of shared refs
+    for ref_slug, citers in ref_to_citers.items():
+        citers_list = sorted(citers)
+        for i in range(len(citers_list)):
+            for j in range(i + 1, len(citers_list)):
+                a, b = citers_list[i], citers_list[j]
+                pair_shared[(a, b)].add(ref_slug)
+
+    # Filter to pairs with enough shared references
+    results = []
+    seen = set()
+    candidates = [(pair, refs) for pair, refs in pair_shared.items() if len(refs) >= min_shared]
+    candidates.sort(key=lambda x: len(x[1]), reverse=True)
+
+    for (a, b), shared_refs in candidates:
+        if a not in embeddings or b not in embeddings:
+            continue
+
+        # Check they're not directly connected (that would make it a known connection)
+        direct = conn.execute(
+            "SELECT 1 FROM edges WHERE (source=? AND target=?) OR (source=? AND target=?)",
+            (a, b, b, a),
+        ).fetchone()
+        if direct:
+            continue
+
+        # Pick the most-cited shared reference as the bridge
+        bridge = max(shared_refs, key=lambda r: len(ref_to_citers.get(r, [])))
+        atoms = [a, b, bridge] if bridge in embeddings else [a, b]
+        if len(atoms) < 3:
+            # Find the nearest shared ref that has an embedding
+            for r in shared_refs:
+                if r in embeddings:
+                    atoms = [a, b, r]
+                    break
+        if len(atoms) < 3:
+            continue
+
+        key = tuple(sorted(atoms))
+        if key not in seen:
+            seen.add(key)
+            results.append({
+                "atoms": atoms,
+                "bridge": bridge,
+                "method": "co-citation",
+                "shared_references": len(shared_refs),
+            })
+            if len(results) >= cap:
+                return results
+
+    return results
+
+
 # --- Per-atom discovery (for interactive Idea Lab) ---
 
 def discover_from_atom(conn, embeddings, start_slug: str, method: str, cap: int = 10):
@@ -582,18 +669,42 @@ def discover_from_atom(conn, embeddings, start_slug: str, method: str, cap: int 
 
 # --- Orchestrator ---
 
-def discover_all(conn, embeddings):
-    """Run all discovery methods, score, and return sorted candidates."""
-    candidates = (
-        find_triangles(conn, embeddings)
-        + find_v_structures(conn, embeddings)
-        + find_walks(conn, embeddings)
-        + find_bridges(conn, embeddings)
-        + find_antipodal(conn, embeddings)
-        + find_voids(conn, embeddings)
-        + find_cluster_boundary(conn, embeddings)
-        + find_residuals(conn, embeddings)
-    )
+METHODS = {
+    "triangle": find_triangles,
+    "v-structure": find_v_structures,
+    "walk": find_walks,
+    "bridge": find_bridges,
+    "antipodal": find_antipodal,
+    "void": find_voids,
+    "cluster-boundary": find_cluster_boundary,
+    "residual": find_residuals,
+    "co-citation": find_co_citations,
+}
+
+
+def discover_all(conn, embeddings, method: str = "all"):
+    """Run discovery methods, score, and return sorted candidates.
+
+    Args:
+        method: "all" runs every method. Otherwise a comma-separated list
+                of method names (e.g. "void,triangle,walk").
+    """
+    if method == "all":
+        fns = list(METHODS.values())
+    else:
+        fns = []
+        for m in method.split(","):
+            m = m.strip()
+            if m not in METHODS:
+                raise ValueError(
+                    f"Unknown discovery method '{m}'. "
+                    f"Available: {', '.join(METHODS.keys())}"
+                )
+            fns.append(METHODS[m])
+
+    candidates = []
+    for fn in fns:
+        candidates.extend(fn(conn, embeddings))
 
     # Build source map from atoms table (real book sources)
     from eureka.core.db import atom_table, atom_source_expr
@@ -604,8 +715,8 @@ def discover_all(conn, embeddings):
         rows = conn.execute(f"SELECT slug, {_src_expr} AS source_title FROM {_atbl} WHERE {_src_expr} IS NOT NULL").fetchall()
         for r in rows:
             source_map[r["slug"]] = r["source_title"]
-    except Exception:
-        pass  # source_title column may not exist in older brains
+    except sqlite3.OperationalError:
+        pass  # source column may not exist in older brains
 
     # Build feedback index from reviewed molecules
     from eureka.core.scorer import _build_feedback_index

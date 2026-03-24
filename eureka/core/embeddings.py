@@ -2,8 +2,14 @@
 
 Default: Gemini Embedding 001 (3072-dim, #1 MTEB).
 Fallback: FastEmbed bge-small-en-v1.5 (384-dim) if no Gemini API key.
+
+Configurable via brain.json:
+  {"embedding": {"backend": "gemini"}}   — force Gemini
+  {"embedding": {"backend": "fastembed"}} — force local FastEmbed
+  Omit or set "auto" to auto-detect.
 """
 
+import json
 import math
 import os
 import sqlite3
@@ -20,14 +26,15 @@ _fastembed_model = None
 
 
 def _has_gemini_key() -> bool:
-    if os.environ.get("GEMINI_API_KEY"):
-        return True
-    env_path = os.path.expanduser("~/Desktop/00_Organized/Agents/tech/secrets/.env")
-    if os.path.exists(env_path):
-        for line in open(env_path):
-            if line.startswith("GEMINI_API_KEY="):
-                return True
-    return False
+    return bool(os.environ.get("GEMINI_API_KEY"))
+
+
+def configure_backend(backend: str) -> None:
+    """Explicitly set the embedding backend ("gemini" or "fastembed")."""
+    global _backend
+    if backend not in ("gemini", "fastembed"):
+        raise ValueError(f"Unknown embedding backend '{backend}'. Use 'gemini' or 'fastembed'.")
+    _backend = backend
 
 
 def _detect_backend() -> str:
@@ -35,6 +42,38 @@ def _detect_backend() -> str:
     if _backend is None:
         _backend = "gemini" if _has_gemini_key() else "fastembed"
     return _backend
+
+
+def _load_env_from_brain_dir(brain_dir: Path) -> None:
+    """Load .env from brain directory into os.environ (for GEMINI_API_KEY etc.)."""
+    env_path = brain_dir / ".env"
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+
+def _load_backend_from_config(brain_dir: Path) -> None:
+    """Load .env and read embedding.backend from brain.json if present."""
+    global _backend
+
+    # Always load .env so GEMINI_API_KEY is available for embedding
+    _load_env_from_brain_dir(brain_dir)
+
+    if _backend is not None:
+        return  # already configured
+    config_path = brain_dir / "brain.json"
+    if config_path.exists():
+        try:
+            data = json.loads(config_path.read_text())
+            chosen = data.get("embedding", {}).get("backend", "auto")
+            if chosen and chosen != "auto":
+                _backend = chosen
+                return
+        except (json.JSONDecodeError, AttributeError):
+            pass
 
 
 def _get_fastembed():
@@ -86,8 +125,14 @@ def ensure_embeddings(conn: sqlite3.Connection, brain_dir: Path,
 
     If force=True, re-embeds everything (use when switching models).
     Otherwise idempotent — skips atoms that already have embeddings.
+
+    Reads embedding backend preference from brain.json if not already set.
+    Uses batch embedding for Gemini when embedding 5+ atoms.
     """
     from eureka.core.db import atom_table
+
+    # Load config-specified backend if not already set
+    _load_backend_from_config(brain_dir)
     model_name = get_model_name()
 
     if force:
@@ -110,6 +155,24 @@ def ensure_embeddings(conn: sqlite3.Connection, brain_dir: Path,
     print(f"Embedding {len(to_embed)} atoms with {model_name}...",
           file=sys.stderr, flush=True)
 
+    backend = _detect_backend()
+
+    # Batch path for Gemini (5+ atoms)
+    if backend == "gemini" and len(to_embed) >= 5:
+        from eureka.core.embeddings_gemini import embed_batch
+        texts = [row["body"] for row in to_embed]
+        vectors = embed_batch(texts)
+        for row, vec in zip(to_embed, vectors):
+            blob = _pack_vector(vec)
+            conn.execute(
+                "INSERT OR REPLACE INTO embeddings (slug, model, vector, updated) VALUES (?, ?, ?, ?)",
+                (row["slug"], model_name, blob, time.time()),
+            )
+        conn.commit()
+        print(f"  Done. {len(to_embed)} atoms embedded (batch).", file=sys.stderr, flush=True)
+        return
+
+    # Sequential path (FastEmbed or small Gemini batches)
     for i, row in enumerate(to_embed):
         vec = embed_text(row["body"])
         blob = _pack_vector(vec)

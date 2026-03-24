@@ -1,4 +1,4 @@
-"""Gemini Embedding API — #1 on MTEB leaderboard, 768 dims."""
+"""Gemini Embedding API — #1 on MTEB leaderboard, 3072 dims."""
 
 import json
 import os
@@ -15,15 +15,22 @@ DELAY = 0.1  # 1500 RPM free tier = ~25/sec, we'll be conservative
 def _get_api_key() -> str:
     key = os.environ.get("GEMINI_API_KEY", "")
     if not key:
-        # Try loading from .env
-        env_path = os.path.expanduser("~/Desktop/00_Organized/Agents/tech/secrets/.env")
-        if os.path.exists(env_path):
-            for line in open(env_path):
-                if line.startswith("GEMINI_API_KEY="):
-                    key = line.split("=", 1)[1].strip().strip('"').strip("'")
-                    break
+        # Try loading from brain dir .env (via EUREKA_BRAIN or --brain-dir)
+        brain_dir = os.environ.get("EUREKA_BRAIN", "")
+        if brain_dir:
+            env_path = os.path.join(brain_dir, ".env")
+            if os.path.exists(env_path):
+                with open(env_path) as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith("GEMINI_API_KEY="):
+                            key = line.split("=", 1)[1].strip().strip('"').strip("'")
+                            break
     if not key:
-        raise RuntimeError("GEMINI_API_KEY not found")
+        raise RuntimeError(
+            "GEMINI_API_KEY not found. Set it in your environment, "
+            "in your brain directory's .env file, or set EUREKA_BRAIN to your brain directory."
+        )
     return key
 
 
