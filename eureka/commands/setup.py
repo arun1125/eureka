@@ -396,7 +396,7 @@ def get_setup_instructions() -> dict:
         ],
         "embedding_note": (
             "Separately from LLM, Eureka uses Gemini Embedding 001 for vectors (3072-dim). "
-            "Set GEMINI_API_KEY for best quality. Falls back to local FastEmbed (384-dim) if no key."
+            "Set GEMINI_API_KEY in your brain directory's .env file."
         ),
     }
 

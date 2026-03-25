@@ -5,7 +5,7 @@ from pathlib import Path
 
 from eureka.core.db import open_db
 from eureka.core.index import rebuild_index
-from eureka.core.embeddings import ensure_embeddings
+from eureka.core.embeddings import ensure_embeddings, _deterministic_embed
 from eureka.core.linker import link_all
 from eureka.core.discovery import find_triangles, find_v_structures, discover_all
 
@@ -22,7 +22,7 @@ def _setup_rich_brain(tmp_path):
         shutil.copy(f, atoms_dir / f.name)
     conn = open_db(brain_dir)
     rebuild_index(conn, brain_dir)
-    ensure_embeddings(conn, brain_dir)
+    ensure_embeddings(conn, brain_dir, embed_fn=_deterministic_embed)
     link_all(conn)
     return brain_dir, conn
 

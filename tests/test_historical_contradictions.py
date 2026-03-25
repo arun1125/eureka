@@ -2,7 +2,7 @@
 
 import struct
 from eureka.core.db import open_db
-from eureka.core.embeddings import embed_text, cosine_sim
+from eureka.core.embeddings import embed_text, cosine_sim, _deterministic_embed
 
 
 def _seed_brain_with_accepted_molecule(tmp_path):
@@ -22,8 +22,8 @@ def _seed_brain_with_accepted_molecule(tmp_path):
     conn = open_db(brain_dir / "brain.db")
     from eureka.core.index import rebuild_index
     rebuild_index(conn, brain_dir)
-    from eureka.core.embeddings import ensure_embeddings
-    ensure_embeddings(conn, brain_dir)
+    from eureka.core.embeddings import ensure_embeddings, _deterministic_embed
+    ensure_embeddings(conn, brain_dir, embed_fn=_deterministic_embed)
 
     # Create an accepted molecule about specialization
     conn.execute(
@@ -86,8 +86,8 @@ def test_detect_historical_contradictions_vs_profile(tmp_path):
     )
     from eureka.core.index import rebuild_index
     rebuild_index(conn, brain_dir)
-    from eureka.core.embeddings import ensure_embeddings
-    ensure_embeddings(conn, brain_dir)
+    from eureka.core.embeddings import ensure_embeddings, _deterministic_embed
+    ensure_embeddings(conn, brain_dir, embed_fn=_deterministic_embed)
 
     conn.execute(
         "INSERT INTO profile (key, value, source, confidence, created_at, updated_at) "

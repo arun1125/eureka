@@ -57,8 +57,8 @@ def _seed_brain_with_profile(tmp_path):
 
     from eureka.core.index import rebuild_index
     rebuild_index(conn, brain_dir)
-    from eureka.core.embeddings import ensure_embeddings
-    ensure_embeddings(conn, brain_dir)
+    from eureka.core.embeddings import ensure_embeddings, _deterministic_embed
+    ensure_embeddings(conn, brain_dir, embed_fn=_deterministic_embed)
     from eureka.core.linker import link_all
     link_all(conn)
 

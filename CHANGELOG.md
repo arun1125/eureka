@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.2 — Remove fastembed, single embedding model
+
+- Removed `fastembed` dependency entirely (and its transitive deps including potential litellm exposure)
+- Single embedding model: Gemini Embedding 001 (3072-dim). No fallback, no backend switching.
+- `GEMINI_API_KEY` is now required for embeddings. Set it in your brain `.env` file.
+- Removed all backend detection, config switching, and threading locks (no longer needed — one code path).
+
 ## 0.3.1 — Hardening
 
 Addresses community feedback on error handling, data integrity, and thread safety.

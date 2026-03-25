@@ -7,7 +7,7 @@ from pathlib import Path
 
 from eureka.core.db import open_db
 from eureka.core.index import rebuild_index
-from eureka.core.embeddings import ensure_embeddings
+from eureka.core.embeddings import ensure_embeddings, _deterministic_embed
 from eureka.core.linker import link_all
 from eureka.core.ask import ask
 
@@ -23,7 +23,7 @@ def _setup_rich_brain(tmp_path):
         shutil.copy(f, atoms_dir / f.name)
     conn = open_db(brain_dir)
     rebuild_index(conn, brain_dir)
-    ensure_embeddings(conn, brain_dir)
+    ensure_embeddings(conn, brain_dir, embed_fn=_deterministic_embed)
     link_all(conn)
     return brain_dir, conn
 
@@ -38,8 +38,9 @@ def _load_embeddings(conn):
     return emb
 
 
-def test_ask_returns_nearest_atoms(tmp_path):
+def test_ask_returns_nearest_atoms(tmp_path, monkeypatch):
     """ask returns nearest atoms by embedding similarity."""
+    monkeypatch.setattr("eureka.core.ask.embed_text", _deterministic_embed)
     brain_dir, conn = _setup_rich_brain(tmp_path)
     embeddings = _load_embeddings(conn)
     result = ask("How does antifragility work?", conn, embeddings)
@@ -53,8 +54,9 @@ def test_ask_returns_nearest_atoms(tmp_path):
         assert 0.0 <= item["similarity"] <= 1.0
 
 
-def test_ask_returns_graph_neighbors(tmp_path):
+def test_ask_returns_graph_neighbors(tmp_path, monkeypatch):
     """ask walks the graph 1 hop to find neighbors RAG would miss."""
+    monkeypatch.setattr("eureka.core.ask.embed_text", _deterministic_embed)
     brain_dir, conn = _setup_rich_brain(tmp_path)
     embeddings = _load_embeddings(conn)
     result = ask("What is a barbell strategy?", conn, embeddings)
@@ -64,8 +66,9 @@ def test_ask_returns_graph_neighbors(tmp_path):
     assert isinstance(result["graph_neighbors"], list)
 
 
-def test_ask_returns_molecules(tmp_path):
+def test_ask_returns_molecules(tmp_path, monkeypatch):
     """ask returns molecules containing retrieved atoms."""
+    monkeypatch.setattr("eureka.core.ask.embed_text", _deterministic_embed)
     brain_dir, conn = _setup_rich_brain(tmp_path)
     embeddings = _load_embeddings(conn)
     result = ask("risk management", conn, embeddings)
@@ -74,8 +77,9 @@ def test_ask_returns_molecules(tmp_path):
     assert isinstance(result["molecules"], list)
 
 
-def test_ask_returns_tensions(tmp_path):
+def test_ask_returns_tensions(tmp_path, monkeypatch):
     """ask surfaces V-structures (tensions) near the question."""
+    monkeypatch.setattr("eureka.core.ask.embed_text", _deterministic_embed)
     brain_dir, conn = _setup_rich_brain(tmp_path)
     embeddings = _load_embeddings(conn)
     result = ask("decision making under uncertainty", conn, embeddings)
@@ -84,8 +88,9 @@ def test_ask_returns_tensions(tmp_path):
     assert isinstance(result["tensions"], list)
 
 
-def test_ask_nearest_are_relevant(tmp_path):
+def test_ask_nearest_are_relevant(tmp_path, monkeypatch):
     """Nearest atoms for a risk question should include risk-related atoms."""
+    monkeypatch.setattr("eureka.core.ask.embed_text", _deterministic_embed)
     brain_dir, conn = _setup_rich_brain(tmp_path)
     embeddings = _load_embeddings(conn)
     result = ask("How should I manage risk in investments?", conn, embeddings)

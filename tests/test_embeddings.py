@@ -1,11 +1,18 @@
 """Slice 3: embeddings — embed text, cache in DB, cosine similarity."""
 
+import os
 import shutil
 from pathlib import Path
 
+import pytest
+
 from eureka.core.db import open_db
 from eureka.core.index import rebuild_index
-from eureka.core.embeddings import embed_text, ensure_embeddings, cosine_sim
+from eureka.core.embeddings import embed_text, ensure_embeddings, cosine_sim, _deterministic_embed
+
+_skip_no_api_key = pytest.mark.skipif(
+    not os.environ.get("GEMINI_API_KEY"), reason="requires GEMINI_API_KEY"
+)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -29,6 +36,7 @@ def _setup_brain(tmp_path):
     return brain_dir, conn
 
 
+@_skip_no_api_key
 def test_embed_text_returns_vector():
     """embed_text returns a list of floats."""
     vec = embed_text("margin of safety in investing")
@@ -37,6 +45,7 @@ def test_embed_text_returns_vector():
     assert all(isinstance(v, float) for v in vec)
 
 
+@_skip_no_api_key
 def test_embed_text_consistent():
     """Same text produces same vector."""
     v1 = embed_text("antifragility means gaining from disorder")
@@ -44,6 +53,7 @@ def test_embed_text_consistent():
     assert v1 == v2
 
 
+@_skip_no_api_key
 def test_cosine_sim_identical():
     """Cosine similarity of identical vectors is 1.0."""
     vec = embed_text("barbell strategy combines safety with risk")
@@ -51,6 +61,7 @@ def test_cosine_sim_identical():
     assert abs(sim - 1.0) < 1e-6
 
 
+@_skip_no_api_key
 def test_cosine_sim_related_higher_than_unrelated():
     """Related concepts have higher similarity than unrelated ones."""
     v_invest = embed_text("margin of safety applies engineering redundancy to investing")
@@ -65,7 +76,7 @@ def test_cosine_sim_related_higher_than_unrelated():
 def test_ensure_embeddings_caches_in_db(tmp_path):
     """ensure_embeddings stores vectors in the embeddings table."""
     brain_dir, conn = _setup_brain(tmp_path)
-    ensure_embeddings(conn, brain_dir)
+    ensure_embeddings(conn, brain_dir, embed_fn=_deterministic_embed)
 
     rows = conn.execute("SELECT slug FROM embeddings").fetchall()
     slugs = {r["slug"] for r in rows}
@@ -77,8 +88,8 @@ def test_ensure_embeddings_caches_in_db(tmp_path):
 def test_ensure_embeddings_is_idempotent(tmp_path):
     """Running ensure_embeddings twice doesn't duplicate rows."""
     brain_dir, conn = _setup_brain(tmp_path)
-    ensure_embeddings(conn, brain_dir)
-    ensure_embeddings(conn, brain_dir)
+    ensure_embeddings(conn, brain_dir, embed_fn=_deterministic_embed)
+    ensure_embeddings(conn, brain_dir, embed_fn=_deterministic_embed)
 
     count = conn.execute("SELECT COUNT(*) as c FROM embeddings").fetchone()["c"]
     assert count == 3

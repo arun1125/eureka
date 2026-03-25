@@ -1,12 +1,6 @@
-"""Embeddings — embed text, cache in DB, cosine similarity.
+"""Embeddings — embed text via Gemini Embedding 001, cache in DB, cosine similarity.
 
-Default: Gemini Embedding 001 (3072-dim, #1 MTEB).
-Fallback: FastEmbed bge-small-en-v1.5 (384-dim) if no Gemini API key.
-
-Configurable via brain.json:
-  {"embedding": {"backend": "gemini"}}   — force Gemini
-  {"embedding": {"backend": "fastembed"}} — force local FastEmbed
-  Omit or set "auto" to auto-detect.
+Uses Gemini Embedding 001 (3072-dim, #1 MTEB). Requires GEMINI_API_KEY.
 """
 
 import json
@@ -15,37 +9,10 @@ import os
 import sqlite3
 import struct
 import sys
-import threading
 import time
 from pathlib import Path
 
 GEMINI_MODEL = "gemini-embedding-001"
-FASTEMBED_MODEL = "BAAI/bge-small-en-v1.5"
-
-_lock = threading.Lock()
-_backend = None  # "gemini" or "fastembed"
-_fastembed_model = None
-
-
-def _has_gemini_key() -> bool:
-    return bool(os.environ.get("GEMINI_API_KEY"))
-
-
-def configure_backend(backend: str) -> None:
-    """Explicitly set the embedding backend ("gemini" or "fastembed")."""
-    global _backend
-    if backend not in ("gemini", "fastembed"):
-        raise ValueError(f"Unknown embedding backend '{backend}'. Use 'gemini' or 'fastembed'.")
-    with _lock:
-        _backend = backend
-
-
-def _detect_backend() -> str:
-    global _backend
-    with _lock:
-        if _backend is None:
-            _backend = "gemini" if _has_gemini_key() else "fastembed"
-        return _backend
 
 
 def _load_env_from_brain_dir(brain_dir: Path) -> None:
@@ -59,51 +26,14 @@ def _load_env_from_brain_dir(brain_dir: Path) -> None:
                 os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 
-def _load_backend_from_config(brain_dir: Path) -> None:
-    """Load .env and read embedding.backend from brain.json if present."""
-    global _backend
-
-    # Always load .env so GEMINI_API_KEY is available for embedding
-    _load_env_from_brain_dir(brain_dir)
-
-    with _lock:
-        if _backend is not None:
-            return  # already configured
-        config_path = brain_dir / "brain.json"
-        if config_path.exists():
-            try:
-                data = json.loads(config_path.read_text())
-                chosen = data.get("embedding", {}).get("backend", "auto")
-                if chosen and chosen != "auto":
-                    _backend = chosen
-                    return
-            except (json.JSONDecodeError, AttributeError):
-                pass
-
-
-def _get_fastembed():
-    global _fastembed_model
-    with _lock:
-        if _fastembed_model is None:
-            from fastembed import TextEmbedding
-            _fastembed_model = TextEmbedding(FASTEMBED_MODEL)
-        return _fastembed_model
-
-
 def embed_text(text: str) -> list[float]:
-    """Embed a single text string, return list of floats."""
-    backend = _detect_backend()
-    if backend == "gemini":
-        from eureka.core.embeddings_gemini import embed_text as gemini_embed
-        return gemini_embed(text)
-    else:
-        model = _get_fastembed()
-        vectors = list(model.embed([text]))
-        return vectors[0].tolist()
+    """Embed a single text string via Gemini, return list of floats."""
+    from eureka.core.embeddings_gemini import embed_text as gemini_embed
+    return gemini_embed(text)
 
 
 def get_model_name() -> str:
-    return GEMINI_MODEL if _detect_backend() == "gemini" else FASTEMBED_MODEL
+    return GEMINI_MODEL
 
 
 def cosine_sim(vec1: list[float], vec2: list[float]) -> float:
@@ -125,20 +55,41 @@ def _unpack_vector(blob: bytes) -> list[float]:
     return list(struct.unpack(f"{n}f", blob))
 
 
+def _deterministic_embed(text: str) -> list[float]:
+    """Word-frequency embedding for tests. Deterministic, produces meaningful
+    similarity between texts that share words. Not for production."""
+    # Build a stable vocabulary from the text's words
+    words = text.lower().split()
+    # Use a fixed 128-dim space. Each word hashes to a dimension.
+    import hashlib
+    dim = 128
+    vec = [0.0] * dim
+    for w in words:
+        idx = int(hashlib.md5(w.encode()).hexdigest(), 16) % dim
+        vec[idx] += 1.0
+    # Add a small unique component so identical-word-set texts aren't equal
+    h = hashlib.sha256(text.encode()).digest()
+    for i in range(min(dim, len(h))):
+        vec[i] += (h[i] - 128) / 1280.0
+    norm = math.sqrt(sum(x * x for x in vec))
+    return [x / norm for x in vec] if norm > 0 else vec
+
+
 def ensure_embeddings(conn: sqlite3.Connection, brain_dir: Path,
-                      force: bool = False) -> None:
+                      force: bool = False, embed_fn=None) -> None:
     """Embed all atoms and cache vectors in the embeddings table.
 
     If force=True, re-embeds everything (use when switching models).
     Otherwise idempotent — skips atoms that already have embeddings.
 
-    Reads embedding backend preference from brain.json if not already set.
-    Uses batch embedding for Gemini when embedding 5+ atoms.
+    Args:
+        embed_fn: Optional callable(text) -> list[float]. If provided, uses this
+                  instead of Gemini API. Useful for tests.
     """
-    from eureka.core.db import atom_table
+    from eureka.core.db import atom_table, transaction
 
-    # Load config-specified backend if not already set
-    _load_backend_from_config(brain_dir)
+    # Load .env so GEMINI_API_KEY is available
+    _load_env_from_brain_dir(brain_dir)
     model_name = get_model_name()
 
     if force:
@@ -158,15 +109,13 @@ def ensure_embeddings(conn: sqlite3.Connection, brain_dir: Path,
     if not to_embed:
         return
 
+    _embed = embed_fn or embed_text
+
     print(f"Embedding {len(to_embed)} atoms with {model_name}...",
           file=sys.stderr, flush=True)
 
-    backend = _detect_backend()
-
-    from eureka.core.db import transaction
-
-    # Batch path for Gemini (5+ atoms)
-    if backend == "gemini" and len(to_embed) >= 5:
+    # Batch path (5+ atoms, only when using Gemini — not custom embed_fn)
+    if embed_fn is None and len(to_embed) >= 5:
         from eureka.core.embeddings_gemini import embed_batch
         texts = [row["body"] for row in to_embed]
         vectors = embed_batch(texts)
@@ -180,10 +129,9 @@ def ensure_embeddings(conn: sqlite3.Connection, brain_dir: Path,
         print(f"  Done. {len(to_embed)} atoms embedded (batch).", file=sys.stderr, flush=True)
         return
 
-    # Sequential path (FastEmbed or small Gemini batches)
-    # Commit in batches of 20 for progress feedback, but each batch is atomic
+    # Sequential path
     for i, row in enumerate(to_embed):
-        vec = embed_text(row["body"])
+        vec = _embed(row["body"])
         blob = _pack_vector(vec)
         conn.execute(
             "INSERT OR REPLACE INTO embeddings (slug, model, vector, updated) VALUES (?, ?, ?, ?)",

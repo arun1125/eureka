@@ -73,7 +73,7 @@ Walks through provider → model → API key → connection test interactively.
 
 ### Embedding note
 
-Separately from LLM, Eureka uses **Gemini Embedding 001** (3072-dim) for vectors. Set `GEMINI_API_KEY` for best quality. Falls back to local FastEmbed (384-dim) if no key. This is independent of the LLM provider choice.
+Separately from LLM, Eureka uses **Gemini Embedding 001** (3072-dim) for vectors. Set `GEMINI_API_KEY` in your brain directory's `.env` file. This is independent of the LLM provider choice.
 
 ---
 
@@ -274,9 +274,7 @@ curl -s -X POST localhost:8765/api/generate-molecule \
 
 ## Embeddings
 
-Default: **Gemini Embedding 001** (3072-dim, #1 MTEB). Requires `GEMINI_API_KEY` in env.
-
-Fallback: FastEmbed bge-small-en-v1.5 (384-dim) if no Gemini key.
+Uses **Gemini Embedding 001** (3072-dim, #1 MTEB). Requires `GEMINI_API_KEY` in env or brain `.env` file.
 
 ### Re-embedding (after model upgrade or manual edits)
 

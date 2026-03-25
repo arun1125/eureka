@@ -169,4 +169,4 @@ def score_candidate(
     fb = feedback_multiplier(atom_slugs, feedback) if feedback else 1.0
 
     raw = coherence * novelty * (emergence ** 1.5) * diversity * size_bonus * fb
-    return min(round(raw * 100, 1), 100)
+    return max(0, min(round(raw * 100, 1), 100))

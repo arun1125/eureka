@@ -144,7 +144,7 @@ def test_get_relevant_profile_filters_by_similarity(tmp_path):
     """get_relevant_profile returns profile entries near a query."""
     brain_dir, conn = _make_brain(tmp_path)
     from eureka.core.profile import process_answers, get_relevant_profile
-    from eureka.core.embeddings import embed_text, ensure_embeddings
+    from eureka.core.embeddings import embed_text, ensure_embeddings, _deterministic_embed
 
     process_answers(
         conn=conn,
@@ -154,7 +154,7 @@ def test_get_relevant_profile_filters_by_similarity(tmp_path):
     )
 
     # Ensure embeddings exist for profile atoms
-    ensure_embeddings(conn, brain_dir)
+    ensure_embeddings(conn, brain_dir, embed_fn=_deterministic_embed)
 
     # Load embeddings
     embs = {}

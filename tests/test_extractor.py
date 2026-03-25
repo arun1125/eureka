@@ -102,6 +102,14 @@ def test_full_ingest_with_mock_llm(tmp_path, monkeypatch):
     from eureka.commands import ingest as ingest_mod
     monkeypatch.setattr(ingest_mod, "get_llm", lambda brain_dir: mock_llm)
 
+    # Mock embeddings to avoid needing GEMINI_API_KEY
+    from eureka.core.embeddings import _deterministic_embed
+    original_ensure = ingest_mod.ensure_embeddings if hasattr(ingest_mod, "ensure_embeddings") else None
+    import eureka.core.embeddings as _emb_mod
+    _orig_ensure = _emb_mod.ensure_embeddings
+    monkeypatch.setattr(_emb_mod, "ensure_embeddings",
+                        lambda conn, bd, force=False, embed_fn=None: _orig_ensure(conn, bd, force=force, embed_fn=_deterministic_embed))
+
     # Call in-process so monkeypatch takes effect (subprocess can't see it)
     from io import StringIO
 
