@@ -1,11 +1,12 @@
 # Changelog
 
-## 0.3.2 — Remove fastembed, single embedding model
+## 0.3.2 — Remove fastembed, fix void geometry
 
 - Removed `fastembed` dependency entirely (and its transitive deps including potential litellm exposure)
 - Single embedding model: Gemini Embedding 001 (3072-dim). No fallback, no backend switching.
 - `GEMINI_API_KEY` is now required for embeddings. Set it in your brain `.env` file.
 - Removed all backend detection, config switching, and threading locks (no longer needed — one code path).
+- **Void discovery now uses spherical interpolation (slerp)** instead of Euclidean midpoint + renormalize. The old approach was geometrically inconsistent with the cosine similarity metric used everywhere else.
 
 ## 0.3.1 — Hardening
 
@@ -27,7 +28,6 @@ Addresses community feedback on error handling, data integrity, and thread safet
 - CLI should migrate from manual `sys.argv` to click/argparse
 - Hardcoded similarity thresholds (0.4, 0.65, 0.75, 0.85) should be configurable
 - Scorer source_diversity placeholder, emergence formula instability
-- Void interpolation uses Euclidean midpoint in cosine space
 - FTS table is populated but never queried (server falls back to LIKE)
 - URLReader and YouTubeReader still raise NotImplementedError
 - No structured logging (Python `logging` module)

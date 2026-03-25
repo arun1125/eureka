@@ -183,6 +183,69 @@ Three steps use an LLM. Everything else is deterministic: embedding geometry, gr
 
 Every piece is independent. Swap the reader (PDF, EPUB, TXT — add your own). Swap the LLM (10 providers out of the box, or any OpenAI-compatible endpoint). Swap the scorer. The CLI is the orchestration layer, not a monolith.
 
+## Contributing
+
+Found a bug? Want a feature? **Your agent can file it directly.**
+
+### For agents
+
+Use `gh` to create an issue. Include structured metadata so it can be triaged and fixed automatically.
+
+```bash
+gh issue create --repo arun1125/eureka \
+  --title "Brief description of the problem" \
+  --body "$(cat <<'EOF'
+## What happened
+[Describe the bug or missing feature]
+
+## Steps to reproduce
+```bash
+eureka ingest some-file.pdf --brain-dir ~/brain
+# Expected: atoms extracted
+# Actual: RuntimeError: ...
+```
+
+## Environment
+- eureka version: [output of `eureka --version`]
+- Python version: [output of `python3 --version`]
+- OS: [mac/linux/windows]
+- LLM provider: [claude-cli/openai/gemini/etc.]
+
+## Suggested fix (optional)
+[If you've read the code and have a suggestion, include file paths and line numbers]
+EOF
+)"
+```
+
+### Labels
+
+Use these labels when creating issues:
+
+| Label | When to use |
+|-------|-------------|
+| `bug` | Something is broken |
+| `enhancement` | New feature or improvement |
+| `good first issue` | Small, self-contained fix |
+| `reader` | PDF/EPUB/URL reader issues |
+| `discovery` | Discovery methods (triangle, void, walk, etc.) |
+| `scorer` | Scoring formula issues |
+| `cli` | CLI argument parsing, help text |
+| `dashboard` | Web dashboard / server |
+
+### What happens next
+
+Issues are picked up by the maintainer's agent, which:
+1. Reads the issue
+2. Writes a failing test that reproduces the problem
+3. Fixes the code
+4. Pushes and closes the issue
+
+If your issue includes reproduction steps and environment info, it gets fixed faster.
+
+### For humans
+
+Open an issue at [github.com/arun1125/eureka/issues](https://github.com/arun1125/eureka/issues) or submit a PR.
+
 ## License
 
 MIT
