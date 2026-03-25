@@ -275,8 +275,36 @@ def find_antipodal(conn, embeddings, cap=20):
 
 # --- Method 6: Void (interpolation) ---
 
+def _slerp(v1: np.ndarray, v2: np.ndarray, t: float = 0.5) -> np.ndarray:
+    """Spherical linear interpolation between two unit vectors.
+
+    Unlike arithmetic mean + renormalize, slerp finds the true geodesic
+    midpoint on the unit hypersphere — consistent with cosine similarity.
+    Falls back to normalized lerp for nearly parallel/antiparallel vectors.
+    """
+    dot = float(np.clip(np.dot(v1, v2), -1.0, 1.0))
+    theta = np.arccos(abs(dot))
+    if theta < 1e-6:
+        # Nearly parallel — lerp is fine
+        mid = (1 - t) * v1 + t * v2
+        norm = np.linalg.norm(mid)
+        return mid / norm if norm > 1e-10 else mid
+    sin_theta = np.sin(theta)
+    a = np.sin((1 - t) * theta) / sin_theta
+    b = np.sin(t * theta) / sin_theta
+    if dot < 0:
+        b = -b  # take the short arc
+    mid = a * v1 + b * v2
+    norm = np.linalg.norm(mid)
+    return mid / norm if norm > 1e-10 else mid
+
+
 def find_voids(conn, embeddings, cap=20):
-    """Find semantic gaps between clusters — midpoints with no nearby atoms."""
+    """Find semantic gaps between clusters — midpoints with no nearby atoms.
+
+    Uses spherical interpolation (slerp) to find the true angular midpoint
+    between atoms, consistent with cosine similarity metric space.
+    """
     slugs = [s for s in _atom_slugs(conn) if s in embeddings]
     if len(slugs) < 5:
         return []
@@ -301,11 +329,7 @@ def find_voids(conn, embeddings, cap=20):
                 vi = matrix[slug_to_idx[si]]
                 for sj in members_j:
                     vj = matrix[slug_to_idx[sj]]
-                    mid = (vi + vj) / 2.0
-                    mid_norm = np.linalg.norm(mid)
-                    if mid_norm < 1e-10:
-                        continue
-                    mid = mid / mid_norm
+                    mid = _slerp(vi, vj, 0.5)
                     sims_to_mid = matrix @ mid
                     nearest_sim = float(np.max(sims_to_mid))
                     void_radius = 1.0 - nearest_sim
