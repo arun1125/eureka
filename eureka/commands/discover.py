@@ -36,7 +36,16 @@ def _slugify(title: str) -> str:
     return s[:80].strip("-")
 
 
-def run_discover(brain_dir_path: str, method: str = "all", count: int = 10) -> None:
+def _existing_atom_combos(conn):
+    """Return a set of frozensets — each is the atom combination of an existing molecule."""
+    rows = conn.execute("SELECT molecule_slug, atom_slug FROM molecule_atoms").fetchall()
+    combos = {}
+    for r in rows:
+        combos.setdefault(r["molecule_slug"], set()).add(r["atom_slug"])
+    return {frozenset(atoms) for atoms in combos.values()}
+
+
+def run_discover(brain_dir_path: str, method: str = "all", count: int = 10, dry_run: bool = False) -> None:
     brain_dir = Path(brain_dir_path)
     conn = open_db(brain_dir)
     now = datetime.now(timezone.utc).isoformat()
@@ -54,10 +63,13 @@ def run_discover(brain_dir_path: str, method: str = "all", count: int = 10) -> N
         _sys.exit(2)
         return
     existing_slugs = {r["slug"] for r in conn.execute("SELECT slug FROM molecules").fetchall()}
+    # Task 5: also check atom combinations, not just slug names
+    existing_combos = _existing_atom_combos(conn)
     candidates = []
     for c in all_candidates:
         slug = _slugify(c["atoms"][0] + "-" + c["atoms"][1]) if len(c["atoms"]) >= 2 else ""
-        if slug not in existing_slugs:
+        atom_combo = frozenset(c["atoms"])
+        if slug not in existing_slugs and atom_combo not in existing_combos:
             candidates.append(c)
         if len(candidates) >= count:
             break
@@ -69,6 +81,31 @@ def run_discover(brain_dir_path: str, method: str = "all", count: int = 10) -> N
     )
     run_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.commit()
+
+    # Dry-run: return candidates without LLM/writes (task 2)
+    if dry_run:
+        candidate_data = [
+            {"atoms": c["atoms"], "method": c.get("method", "unknown"), "score": c.get("score", 0)}
+            for c in candidates
+        ]
+        from eureka.core.db import log_operation
+        log_operation(conn, "discover", detail={
+            "run_id": run_id, "method": method,
+            "candidates_found": len(candidates),
+            "molecules_written": 0,
+            "dry_run": True,
+        })
+        conn.commit()
+        conn.close()
+        emit(envelope(True, "discover", {
+            "dry_run": True,
+            "candidates_found": len(candidates),
+            "candidates": candidate_data,
+            "molecules_written": 0,
+            "method": method,
+            "discovery_run_id": run_id,
+        }))
+        return
 
     # If LLM available and candidates found, write molecules
     llm = get_llm(brain_dir)
