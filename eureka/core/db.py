@@ -165,6 +165,11 @@ def _migrate_lineage(conn: sqlite3.Connection) -> None:
     if "file_hash" not in cols:
         conn.execute("ALTER TABLE atoms ADD COLUMN file_hash TEXT")
 
+    # notes table (SecondBrainKit compat): file_hash
+    notes_cols = {r[1] for r in conn.execute("PRAGMA table_info(notes)").fetchall()}
+    if notes_cols and "file_hash" not in notes_cols:
+        conn.execute("ALTER TABLE notes ADD COLUMN file_hash TEXT")
+
     # molecules: discovery_run_id + generation metadata
     cols = {r[1] for r in conn.execute("PRAGMA table_info(molecules)").fetchall()}
     if "discovery_run_id" not in cols:

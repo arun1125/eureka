@@ -10,15 +10,39 @@ from eureka.core.parser import parse_note
 
 
 def scan_files(brain_dir: Path) -> dict:
-    """Walk atoms/ and molecules/ directories, return {slug: {path, hash, type}}."""
-    result = {}
-    atoms_dir = brain_dir / "atoms"
-    if atoms_dir.is_dir():
-        for md in atoms_dir.glob("*.md"):
-            slug = md.stem
-            file_hash = hashlib.sha256(md.read_bytes()).hexdigest()
-            result[slug] = {"path": md, "hash": file_hash, "type": "atom"}
+    """Walk atoms/ and molecules/ directories, return {slug: {path, hash, type}}.
 
+    Supports both Eureka layout (atoms/, molecules/) and SecondBrainKit layout
+    (*.md at root level). If atoms/ exists and has files, use it. Otherwise fall
+    back to root-level .md files as atoms.
+    """
+    result = {}
+
+    # Atoms: scan both atoms/ subdir and root-level .md files, merge.
+    # Eureka uses atoms/; SecondBrainKit puts .md at root. Support both.
+    atoms_dir = brain_dir / "atoms"
+    _exclude = {"brain.json", "README.md", "CHANGELOG.md"}
+    seen_slugs = set()
+
+    atom_files = []
+    if atoms_dir.is_dir():
+        atom_files.extend(atoms_dir.glob("*.md"))
+    # Also scan root-level .md (SecondBrainKit layout)
+    atom_files.extend(
+        md for md in brain_dir.glob("*.md")
+        if md.name not in _exclude
+    )
+
+    for md in atom_files:
+        slug = md.stem
+        if slug in seen_slugs:
+            continue  # atoms/ version takes precedence (listed first)
+        seen_slugs.add(slug)
+        slug = md.stem
+        file_hash = hashlib.sha256(md.read_bytes()).hexdigest()
+        result[slug] = {"path": md, "hash": file_hash, "type": "atom"}
+
+    # Molecules
     mol_dir = brain_dir / "molecules"
     if mol_dir.is_dir():
         for md in mol_dir.glob("*.md"):
@@ -106,18 +130,30 @@ def apply_sync(conn: sqlite3.Connection, brain_dir: Path, plan: dict,
 
     # Add: files exist but not in DB
     _atbl = atom_table(conn)
+    _use_notes = (_atbl == "notes")
     for item in plan["add"]:
         slug = item["slug"]
         if item["type"] == "atom":
             note = parse_note(item["path"])
             word_count = len(note["body"].split())
-            conn.execute(
-                f"""INSERT OR IGNORE INTO {_atbl}
-                    (slug, title, body, body_hash, word_count, file_hash, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))""",
-                (slug, note["title"], note["body"], note["body_hash"],
-                 word_count, item["hash"]),
-            )
+            if _use_notes:
+                # SecondBrainKit schema: notes table
+                tags_str = ", ".join(note.get("tags", []))
+                conn.execute(
+                    """INSERT OR IGNORE INTO notes
+                        (slug, type, body, tags, word_count, file_hash, mtime)
+                        VALUES (?, 'atom', ?, ?, ?, ?, datetime('now'))""",
+                    (slug, note["body"], tags_str, word_count, item["hash"]),
+                )
+            else:
+                # Eureka schema: atoms table
+                conn.execute(
+                    f"""INSERT OR IGNORE INTO {_atbl}
+                        (slug, title, body, body_hash, word_count, file_hash, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))""",
+                    (slug, note["title"], note["body"], note["body_hash"],
+                     word_count, item["hash"]),
+                )
             added += 1
         elif item["type"] == "molecule":
             content = item["path"].read_text()
@@ -139,13 +175,22 @@ def apply_sync(conn: sqlite3.Connection, brain_dir: Path, plan: dict,
         if item["type"] == "atom":
             note = parse_note(item["path"])
             word_count = len(note["body"].split())
-            conn.execute(
-                f"""UPDATE {_atbl} SET title=?, body=?, body_hash=?,
-                    word_count=?, file_hash=?, updated_at=datetime('now')
-                    WHERE slug=?""",
-                (note["title"], note["body"], note["body_hash"],
-                 word_count, item["hash"], slug),
-            )
+            if _use_notes:
+                tags_str = ", ".join(note.get("tags", []))
+                conn.execute(
+                    """UPDATE notes SET body=?, tags=?,
+                        word_count=?, file_hash=?, mtime=datetime('now')
+                        WHERE slug=?""",
+                    (note["body"], tags_str, word_count, item["hash"], slug),
+                )
+            else:
+                conn.execute(
+                    f"""UPDATE {_atbl} SET title=?, body=?, body_hash=?,
+                        word_count=?, file_hash=?, updated_at=datetime('now')
+                        WHERE slug=?""",
+                    (note["title"], note["body"], note["body_hash"],
+                     word_count, item["hash"], slug),
+                )
             # Clear embedding so it gets re-embedded
             conn.execute("DELETE FROM embeddings WHERE slug = ?", (slug,))
             updated += 1
@@ -181,9 +226,52 @@ def apply_sync(conn: sqlite3.Connection, brain_dir: Path, plan: dict,
     }
 
 
+def _backfill_hashes(conn: sqlite3.Connection, brain_dir: Path) -> int:
+    """Backfill file_hash for DB rows that have NULL hashes (imported brains).
+
+    Matches DB slugs to files on disk and stamps the hash. Returns count updated.
+    """
+    _atbl = atom_table(conn)
+    count = 0
+
+    # Backfill atoms/notes — check atoms/ subdir then root
+    null_atoms = conn.execute(f"SELECT slug FROM {_atbl} WHERE file_hash IS NULL").fetchall()
+    if null_atoms:
+        atoms_dir = brain_dir / "atoms"
+        for row in null_atoms:
+            slug = row["slug"]
+            md_path = atoms_dir / f"{slug}.md"
+            if not md_path.exists():
+                md_path = brain_dir / f"{slug}.md"  # SecondBrainKit layout
+            if md_path.exists():
+                file_hash = hashlib.sha256(md_path.read_bytes()).hexdigest()
+                conn.execute(f"UPDATE {_atbl} SET file_hash = ? WHERE slug = ?", (file_hash, slug))
+                count += 1
+
+    # Backfill molecules
+    null_mols = conn.execute("SELECT slug FROM molecules WHERE file_hash IS NULL").fetchall()
+    if null_mols:
+        mol_dir = brain_dir / "molecules"
+        for row in null_mols:
+            slug = row["slug"]
+            md_path = mol_dir / f"{slug}.md"
+            if md_path.exists():
+                file_hash = hashlib.sha256(md_path.read_bytes()).hexdigest()
+                conn.execute("UPDATE molecules SET file_hash = ? WHERE slug = ?", (file_hash, slug))
+                count += 1
+
+    if count:
+        conn.commit()
+        print(f"Backfilled {count} file hashes (first sync on imported brain).", file=sys.stderr, flush=True)
+    return count
+
+
 def run_sync(conn: sqlite3.Connection, brain_dir: Path,
              dry_run: bool = False) -> dict:
     """Full sync: scan files, scan DB, compute diff, apply."""
+    # On first sync of an imported brain, backfill hashes so diff is accurate
+    _backfill_hashes(conn, brain_dir)
+
     file_state = scan_files(brain_dir)
     db_state = scan_db(conn)
     plan = compute_diff(file_state, db_state)
