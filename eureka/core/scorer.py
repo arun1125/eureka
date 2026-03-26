@@ -169,4 +169,7 @@ def score_candidate(
     fb = feedback_multiplier(atom_slugs, feedback) if feedback else 1.0
 
     raw = coherence * novelty * (emergence ** 1.5) * diversity * size_bonus * fb
-    return max(0, min(round(raw * 100, 1), 100))
+
+    # Normalize: max theoretical raw ≈ 1.0 * 1.0 * ~1.5 * 2.0 * 1.3 * 1.5 = ~5.85
+    # Use empirical ceiling of 1.5 so scores spread across 0-100 instead of clustering at 100
+    return max(0, min(round(raw / 1.5 * 100, 1), 100))
