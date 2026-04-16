@@ -188,6 +188,27 @@ COMMAND_HELP = {
         "  eureka lint --brain-dir ~/mybrain\n"
         "  eureka lint --brain-dir ~/mybrain --report\n"
     ),
+    "trends": (
+        "Usage: eureka trends [options]\n\n"
+        "Show how your focus has shifted over time.\n\n"
+        "Options:\n"
+        "  --brain-dir <dir>   Brain directory (or set EUREKA_BRAIN)\n"
+        "  --window <days>     Recent window size in days (default: 30)\n"
+        "  --compare <days>    Prior window size in days (default: 30)\n\n"
+        "Examples:\n"
+        "  eureka trends --brain-dir ~/mybrain\n"
+        "  eureka trends --brain-dir ~/mybrain --window 14 --compare 14\n"
+    ),
+    "revisit": (
+        "Usage: eureka revisit [options]\n\n"
+        "Surface old atoms newly relevant to recent activity.\n\n"
+        "Options:\n"
+        "  --brain-dir <dir>   Brain directory (or set EUREKA_BRAIN)\n"
+        "  --count <N>         Max results (default: 10)\n\n"
+        "Examples:\n"
+        "  eureka revisit --brain-dir ~/mybrain\n"
+        "  eureka revisit --brain-dir ~/mybrain --count 5\n"
+    ),
 }
 
 
@@ -217,7 +238,7 @@ def _get_brain_dir(args):
 def _get_positional_brain_dir(args):
     """Find positional brain_dir arg, skipping flags and their values."""
     skip_next = False
-    flags_with_values = {"--count", "--port", "--brain-dir", "--provider", "--model", "--api-key", "--base-url", "--method", "--title", "--context"}
+    flags_with_values = {"--count", "--port", "--brain-dir", "--provider", "--model", "--api-key", "--base-url", "--method", "--title", "--context", "--window", "--compare"}
     for i, arg in enumerate(args[1:], 1):  # skip command name
         if skip_next:
             skip_next = False
@@ -275,6 +296,8 @@ def main():
             "  sync [--dry-run]        Sync .md files with brain.db\n"
             "  lineage <slug>          Trace source→atom→molecule chain\n"
             "  explore <slug> [--depth N]  BFS neighborhood analysis from an atom\n"
+            "  trends [--window N]     Show how your focus has shifted over time\n"
+            "  revisit [--count N]     Surface old atoms newly relevant to recent activity\n"
             "  serve [--port N]        Start visual dashboard\n\n"
             "Options:\n"
             "  --brain-dir <dir>       Brain directory (or set EUREKA_BRAIN)\n"
@@ -670,6 +693,61 @@ def main():
             embeddings[r["slug"]] = list(struct.unpack(f"{dim}f", r["vector"]))
         result = bfs_explore(conn, embeddings, slug, depth=depth)
         emit(envelope(True, "explore", result))
+        conn.close()
+    elif command == "trends":
+        brain_dir = _get_brain_dir(args)
+        if brain_dir is None:
+            _brain_dir_error("trends", "eureka trends --brain-dir <dir>")
+        from eureka.core.db import open_db
+        from eureka.core.temporal import trends
+        from pathlib import Path
+        conn = open_db(brain_dir)
+        window = 30
+        if "--window" in args:
+            widx = args.index("--window")
+            if widx + 1 < len(args):
+                try:
+                    window = int(args[widx + 1])
+                except ValueError:
+                    emit(envelope(False, "trends", {"message": f"--window requires an integer, got '{args[widx + 1]}'"}))
+                    sys.exit(1)
+        compare = 30
+        if "--compare" in args:
+            cidx = args.index("--compare")
+            if cidx + 1 < len(args):
+                try:
+                    compare = int(args[cidx + 1])
+                except ValueError:
+                    emit(envelope(False, "trends", {"message": f"--compare requires an integer, got '{args[cidx + 1]}'"}))
+                    sys.exit(1)
+        result = trends(conn, Path(brain_dir), window_days=window, compare_days=compare)
+        emit(envelope(True, "trends", result))
+        conn.close()
+    elif command == "revisit":
+        brain_dir = _get_brain_dir(args)
+        if brain_dir is None:
+            _brain_dir_error("revisit", "eureka revisit --brain-dir <dir>")
+        import struct
+        from eureka.core.db import open_db
+        from eureka.core.temporal import revisit
+        from pathlib import Path
+        conn = open_db(brain_dir)
+        rows = conn.execute("SELECT slug, vector FROM embeddings").fetchall()
+        embeddings = {}
+        for r in rows:
+            dim = len(r["vector"]) // 4
+            embeddings[r["slug"]] = list(struct.unpack(f"{dim}f", r["vector"]))
+        count = 10
+        if "--count" in args:
+            idx = args.index("--count")
+            if idx + 1 < len(args):
+                try:
+                    count = int(args[idx + 1])
+                except ValueError:
+                    emit(envelope(False, "revisit", {"message": f"--count requires an integer, got '{args[idx + 1]}'"}))
+                    sys.exit(1)
+        result = revisit(conn, embeddings, Path(brain_dir), max_results=count)
+        emit(envelope(True, "revisit", result))
         conn.close()
     elif command == "status":
         brain_dir = _get_brain_dir(args) or _get_positional_brain_dir(args)
