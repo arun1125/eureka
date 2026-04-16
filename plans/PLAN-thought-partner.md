@@ -36,23 +36,7 @@ New files:
 CLI: `eureka decide "Should I do X or Y?" --brain-dir <dir>`
 Flags: `--no-file` (don't save as molecule), `--context "extra context"`
 
-### Phase 1 — Weekly digest (passive value)
-Automated weekly summary surfacing what changed and what matters.
-
-Pipeline:
-1. Query activity log for past 7 days
-2. New atoms, new molecules, reviewed molecules
-3. Cross-reference with profile goals
-4. Detect: focus shifts, blind spots widening/closing, stale decisions
-5. LLM call: synthesize into "here's what your brain learned this week"
-
-New files:
-- `eureka/core/digest.py` — weekly synthesis
-- Wire as cron job or SessionStart hook
-
-CLI: `eureka digest --brain-dir <dir> [--days 7]`
-
-### Phase 2 — Karpathy wiki layer
+### Phase 1 — Karpathy wiki layer
 Foundation for self-maintaining brain.
 
 - `brain/sources/` — immutable raw inputs
@@ -62,7 +46,7 @@ Foundation for self-maintaining brain.
 - Ingest v2: multi-file pass (update existing atoms, not just create new)
 - `--dry-run` default, git auto-commit per ingest
 
-### Phase 3 — `eureka lint` v1 (mechanical)
+### Phase 2 — `eureka lint` v1 (mechanical)
 No LLM, pure computation:
 - Orphaned atoms (zero backlinks, zero molecule membership)
 - Broken wikilinks ([[slug]] to nonexistent atoms)
@@ -71,24 +55,24 @@ No LLM, pure computation:
 
 Output: markdown report to `brain/_lint/YYYY-MM-DD.md`
 
-### Phase 4 — Temporal reasoning
+### Phase 3 — Temporal reasoning
 - Atom staleness scores (decay over time, refreshed on citation)
 - `eureka trends` — focus shifts over time windows
 - `eureka revisit` — old atoms newly relevant to recent activity
 - Needs enough history to be useful — Phase 2 ingest builds this
 
-### Phase 5 — Profile-integrated scoring
+### Phase 4 — Profile-integrated scoring
 - Profile goals weight discovery scoring (scorer.py multiplier)
 - `ask` and `decide` prioritize atoms near stated goals
 - Discovery surfaces molecules aligned with current objectives
 
-### Phase 6 — `eureka lint` v2 (LLM-judged)
+### Phase 5 — `eureka lint` v2 (LLM-judged)
 - Contradictions: pre-filter by cosine (0.5-0.85), LLM judges ~500 pairs
 - Stale claims: atoms with dated assertions older than threshold
 - Knowledge gaps: concepts mentioned across 3+ atoms with no dedicated atom
 - Cost: ~$0.50/run with Haiku
 
-### Phase 7 — `eureka resolve` (decision outcomes)
+### Phase 6 — `eureka resolve` (decision outcomes)
 Closes the decide loop:
 - `eureka resolve <decision-slug> --outcome "what happened"`
 - Links outcome back to the decision molecule

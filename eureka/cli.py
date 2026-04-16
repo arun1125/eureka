@@ -178,6 +178,16 @@ COMMAND_HELP = {
         "Examples:\n"
         "  eureka enrich --brain-dir ~/mybrain\n"
     ),
+    "lint": (
+        "Usage: eureka lint [options]\n\n"
+        "Run brain health checks (no LLM needed).\n\n"
+        "Options:\n"
+        "  --brain-dir <dir>   Brain directory (or set EUREKA_BRAIN)\n"
+        "  --report            Write markdown report to brain/_lint/\n\n"
+        "Examples:\n"
+        "  eureka lint --brain-dir ~/mybrain\n"
+        "  eureka lint --brain-dir ~/mybrain --report\n"
+    ),
 }
 
 
@@ -261,6 +271,7 @@ def main():
             "  profile [--answers ..]  Onboarding questions & profile\n"
             "  reflect                 Generate a reflection\n"
             "  enrich                  Enrich reference stubs via Semantic Scholar\n"
+            "  lint [--report]         Run brain health checks (no LLM needed)\n"
             "  sync [--dry-run]        Sync .md files with brain.db\n"
             "  lineage <slug>          Trace source→atom→molecule chain\n"
             "  explore <slug> [--depth N]  BFS neighborhood analysis from an atom\n"
@@ -570,6 +581,27 @@ def main():
         conn = open_db(brain_dir)
         result = reflect(conn, Path(brain_dir))
         emit(envelope(True, "reflect", result))
+        conn.close()
+    elif command == "lint":
+        brain_dir = _get_brain_dir(args)
+        if brain_dir is None:
+            _brain_dir_error("lint", "eureka lint --brain-dir <dir>")
+        import struct
+        from eureka.core.db import open_db
+        from eureka.core.lint import lint, write_report
+        from pathlib import Path
+        conn = open_db(brain_dir)
+        # Load embeddings for duplicate detection
+        rows = conn.execute("SELECT slug, vector FROM embeddings").fetchall()
+        embeddings = {}
+        for r in rows:
+            dim = len(r["vector"]) // 4
+            embeddings[r["slug"]] = list(struct.unpack(f"{dim}f", r["vector"]))
+        result = lint(conn, Path(brain_dir), embeddings=embeddings)
+        if "--report" in args:
+            report_path = write_report(result, Path(brain_dir))
+            result["report_path"] = str(report_path)
+        emit(envelope(True, "lint", result))
         conn.close()
     elif command == "sync":
         brain_dir = _get_brain_dir(args) or _get_positional_brain_dir(args)
