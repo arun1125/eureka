@@ -23,13 +23,37 @@ def ask(
     """
     q_vec = embed_text(question)
 
+    # --- 0. Profile embeddings (needed for re-ranking) ---
+    profile_rows = conn.execute("SELECT key, value FROM profile").fetchall()
+    profile_vecs = {}
+    for row in profile_rows:
+        slug = row["key"]
+        if slug in embeddings:
+            profile_vecs[slug] = embeddings[slug]
+
     # --- 1. Nearest atoms by cosine similarity ---
     scored = []
     for slug, vec in embeddings.items():
         sim = cosine_sim(q_vec, vec)
         scored.append({"slug": slug, "similarity": sim})
     scored.sort(key=lambda x: x["similarity"], reverse=True)
-    nearest = scored[:5]
+
+    # Take top 10, re-rank by blending similarity with profile relevance, then take top 5
+    top_candidates = scored[:10]
+    if profile_vecs:
+        profile_vec_list = list(profile_vecs.values())
+        for item in top_candidates:
+            slug = item["slug"]
+            if slug in embeddings:
+                max_profile_sim = max(cosine_sim(embeddings[slug], pv) for pv in profile_vec_list)
+                # Scale profile similarity to 0-0.1 range
+                profile_boost = max(0.0, min(max_profile_sim, 1.0)) * 0.1
+            else:
+                profile_boost = 0.0
+            item["final_score"] = item["similarity"] * 0.9 + profile_boost * 0.1
+        top_candidates.sort(key=lambda x: x["final_score"], reverse=True)
+
+    nearest = top_candidates[:5]
     nearest_slugs = {item["slug"] for item in nearest}
 
     # --- 2. Graph neighbors (1 hop) ---

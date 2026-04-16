@@ -98,12 +98,46 @@ def feedback_multiplier(
     return boost * penalty * known_penalty
 
 
+def profile_multiplier(
+    atom_slugs: list[str],
+    profile_embeddings: dict[str, list[float]],
+    candidate_embeddings: dict[str, list[float]],
+) -> float:
+    """Boost candidates that align with the user's profile goals/values.
+
+    Returns a multiplier in [1.0, 1.5]:
+        1.0  — no alignment or no profile data
+        >1.0 — candidate centroid is semantically close to a profile entry
+    """
+    if not profile_embeddings:
+        return 1.0
+
+    # Get candidate atom vectors
+    vectors = [candidate_embeddings[s] for s in atom_slugs if s in candidate_embeddings]
+    if not vectors:
+        return 1.0
+
+    # Compute centroid of candidate atoms
+    dim = len(vectors[0])
+    centroid = [sum(v[d] for v in vectors) / len(vectors) for d in range(dim)]
+
+    # Find max cosine similarity between centroid and any profile embedding
+    max_sim = max(cosine_sim(centroid, pv) for pv in profile_embeddings.values())
+
+    if max_sim <= 0.5:
+        return 1.0
+
+    # Boost proportionally: sim=0.7 → 1.2x, sim=0.9 → 1.4x, capped at 1.5x
+    return min(1.0 + (max_sim - 0.5) * 1.0, 1.5)
+
+
 def score_candidate(
     atom_slugs: list[str],
     candidate_embeddings: dict[str, list[float]],
     all_embeddings: dict[str, list[float]],
     source_map: dict[str, str] | None = None,
     feedback: dict | None = None,
+    profile_embeddings: dict[str, list[float]] | None = None,
 ) -> float:
     """Score a molecule candidate.
 
@@ -168,8 +202,11 @@ def score_candidate(
     # --- Feedback: boost/penalize based on review history ---
     fb = feedback_multiplier(atom_slugs, feedback) if feedback else 1.0
 
-    raw = coherence * novelty * (emergence ** 1.5) * diversity * size_bonus * fb
+    # --- Profile alignment: boost candidates matching user goals ---
+    pm = profile_multiplier(atom_slugs, profile_embeddings, candidate_embeddings) if profile_embeddings else 1.0
 
-    # Normalize: max theoretical raw ≈ 1.0 * 1.0 * ~1.5 * 2.0 * 1.3 * 1.5 = ~5.85
+    raw = coherence * novelty * (emergence ** 1.5) * diversity * size_bonus * fb * pm
+
+    # Normalize: max theoretical raw ≈ 1.0 * 1.0 * ~1.5 * 2.0 * 1.3 * 1.5 * 1.5 = ~8.78
     # Use empirical ceiling of 1.5 so scores spread across 0-100 instead of clustering at 100
     return max(0, min(round(raw / 1.5 * 100, 1), 100))
