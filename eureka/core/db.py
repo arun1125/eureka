@@ -149,6 +149,9 @@ def open_db(db_path: Path) -> sqlite3.Connection:
     # Migrate: lineage tracking columns
     _migrate_lineage(conn)
 
+    # Migrate: decisions table
+    _migrate_decisions(conn)
+
     # Migrate: sync notes.tags JSON column → tags/note_tags normalized tables.
     _sync_note_tags(conn)
 
@@ -185,6 +188,21 @@ def _migrate_lineage(conn: sqlite3.Connection) -> None:
     cols = {r[1] for r in conn.execute("PRAGMA table_info(molecule_atoms)").fetchall()}
     if "role" not in cols:
         conn.execute("ALTER TABLE molecule_atoms ADD COLUMN role TEXT DEFAULT 'member'")
+
+
+def _migrate_decisions(conn: sqlite3.Connection) -> None:
+    """Create decisions table for structured decision tracking."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS decisions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            question TEXT NOT NULL,
+            result_json TEXT,
+            molecule_slug TEXT,
+            outcome TEXT,
+            resolved_at TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
 
 
 def log_operation(conn: sqlite3.Connection, op_type: str, *,
@@ -266,7 +284,7 @@ def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
 
 _ALLOWED_TABLES = {"atoms", "molecules", "sources", "edges", "tags", "note_tags",
                     "embeddings", "reviews", "discovery_runs", "molecule_atoms",
-                    "profile", "activity", "notes"}
+                    "profile", "activity", "notes", "decisions"}
 
 
 def _count(conn: sqlite3.Connection, table: str, column: str = None, value: str = None) -> int:

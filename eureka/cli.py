@@ -48,6 +48,21 @@ COMMAND_HELP = {
         "  eureka ingest notes.txt --title \"Field Notes\" --brain-dir ~/mybrain\n"
         "  cat transcript.txt | eureka ingest --stdin --brain-dir ~/mybrain\n"
     ),
+    "explore": (
+        "Usage: eureka explore <slug> [options]\n\n"
+        "BFS neighborhood analysis from a starting atom.\n"
+        "Traverses the edge graph N layers deep and reports:\n"
+        "  - Layer sizes and atoms at each depth\n"
+        "  - Internal density (which direct neighbors are most cross-linked)\n"
+        "  - Convergence (layer-2 atoms reached from multiple layer-1 atoms)\n"
+        "  - Triangles (structural patterns in the neighborhood)\n\n"
+        "Options:\n"
+        "  --brain-dir <dir>   Brain directory (or set EUREKA_BRAIN)\n"
+        "  --depth <N>         BFS depth (default: 2)\n\n"
+        "Examples:\n"
+        "  eureka explore desire-kills-the-goal --brain-dir ~/mybrain\n"
+        "  eureka explore the-world-mirrors --depth 3 --brain-dir ~/mybrain\n"
+    ),
     "discover": (
         "Usage: eureka discover [options]\n\n"
         "Find molecule candidates and write the top ones.\n\n"
@@ -144,6 +159,17 @@ COMMAND_HELP = {
         "Examples:\n"
         "  eureka reflect --brain-dir ~/mybrain\n"
     ),
+    "decide": (
+        "Usage: eureka decide <question> [options]\n\n"
+        "Structured decision support using your brain's knowledge.\n\n"
+        "Options:\n"
+        "  --brain-dir <dir>   Brain directory (or set EUREKA_BRAIN)\n"
+        "  --context <text>    Extra context for the decision\n"
+        "  --no-file           Don't save decision as molecule\n\n"
+        "Examples:\n"
+        "  eureka decide \"Should I focus on YouTube or LinkedIn?\" --brain-dir ~/mybrain\n"
+        "  eureka decide \"Hire a VA or do it myself?\" --context \"Budget is $500/mo\" --brain-dir ~/mybrain\n"
+    ),
     "enrich": (
         "Usage: eureka enrich [options]\n\n"
         "Enrich reference stubs via Semantic Scholar.\n\n"
@@ -181,7 +207,7 @@ def _get_brain_dir(args):
 def _get_positional_brain_dir(args):
     """Find positional brain_dir arg, skipping flags and their values."""
     skip_next = False
-    flags_with_values = {"--count", "--port", "--brain-dir", "--provider", "--model", "--api-key", "--base-url", "--method", "--title"}
+    flags_with_values = {"--count", "--port", "--brain-dir", "--provider", "--model", "--api-key", "--base-url", "--method", "--title", "--context"}
     for i, arg in enumerate(args[1:], 1):  # skip command name
         if skip_next:
             skip_next = False
@@ -228,6 +254,7 @@ def main():
             "  ingest <source>         Add a source (file, URL, arxiv:ID)\n"
             "  discover [--count N]    Find & write molecule candidates\n"
             "  ask <question>          Query the brain (graph-aware retrieval)\n"
+            "  decide <question>       Structured decision support\n"
             "  dump <text>             Extract atoms from raw text\n"
             "  review <slug> yes|no    Accept or reject a molecule\n"
             "  status                  Brain health & stats\n"
@@ -236,6 +263,7 @@ def main():
             "  enrich                  Enrich reference stubs via Semantic Scholar\n"
             "  sync [--dry-run]        Sync .md files with brain.db\n"
             "  lineage <slug>          Trace source→atom→molecule chain\n"
+            "  explore <slug> [--depth N]  BFS neighborhood analysis from an atom\n"
             "  serve [--port N]        Start visual dashboard\n\n"
             "Options:\n"
             "  --brain-dir <dir>       Brain directory (or set EUREKA_BRAIN)\n"
@@ -434,6 +462,44 @@ def main():
         result = ask(question, conn, embeddings)
         emit(envelope(True, "ask", result))
         conn.close()
+    elif command == "decide":
+        if len(args) < 2:
+            emit(envelope(False, "decide", {
+                "message": "Missing question argument.",
+                "usage": "eureka decide <question> --brain-dir <dir>",
+            }))
+            sys.exit(1)
+        question = args[1]
+        brain_dir = _get_brain_dir(args)
+        if brain_dir is None:
+            _brain_dir_error("decide", "eureka decide <question> --brain-dir <dir>")
+        import struct
+        from eureka.core.db import open_db
+        conn = open_db(brain_dir)
+        rows = conn.execute("SELECT slug, vector FROM embeddings").fetchall()
+        embeddings = {}
+        for r in rows:
+            dim = len(r["vector"]) // 4
+            embeddings[r["slug"]] = list(struct.unpack(f"{dim}f", r["vector"]))
+        from eureka.core.llm import get_llm, load_llm_config
+        try:
+            llm = get_llm(config=load_llm_config(brain_dir))
+        except RuntimeError as e:
+            emit(envelope(False, "decide", {"message": str(e)}))
+            sys.exit(1)
+        if llm is None:
+            emit(envelope(False, "decide", {"message": "No LLM found. Install Claude Code or run `eureka setup`."}))
+            sys.exit(1)
+        context = None
+        if "--context" in args:
+            cidx = args.index("--context")
+            context = args[cidx + 1] if cidx + 1 < len(args) else None
+        no_file = "--no-file" in args
+        from eureka.core.decide import decide
+        from pathlib import Path as _DecidePath
+        result = decide(question, conn, embeddings, llm, context=context, file_back=not no_file, brain_dir=_DecidePath(brain_dir))
+        emit(envelope(True, "decide", result))
+        conn.close()
     elif command == "dump":
         # --stdin support (task 3)
         use_stdin = "--stdin" in args
@@ -541,6 +607,38 @@ def main():
                 emit(envelope(True, "lineage", result))
         finally:
             conn.close()
+    elif command == "explore":
+        if len(args) < 2:
+            emit(envelope(False, "explore", {
+                "message": "Missing slug argument.",
+                "usage": "eureka explore <slug> [--depth N] --brain-dir <dir>",
+            }))
+            sys.exit(1)
+        slug = args[1]
+        brain_dir = _get_brain_dir(args)
+        if brain_dir is None:
+            _brain_dir_error("explore", "eureka explore <slug> [--depth N] --brain-dir <dir>")
+        depth = 2
+        if "--depth" in args:
+            didx = args.index("--depth")
+            if didx + 1 < len(args):
+                try:
+                    depth = int(args[didx + 1])
+                except ValueError:
+                    emit(envelope(False, "explore", {"message": f"--depth requires an integer, got '{args[didx + 1]}'"}))
+                    sys.exit(1)
+        import struct
+        from eureka.core.db import open_db
+        from eureka.core.discovery import bfs_explore
+        conn = open_db(brain_dir)
+        rows = conn.execute("SELECT slug, vector FROM embeddings").fetchall()
+        embeddings = {}
+        for r in rows:
+            dim = len(r["vector"]) // 4
+            embeddings[r["slug"]] = list(struct.unpack(f"{dim}f", r["vector"]))
+        result = bfs_explore(conn, embeddings, slug, depth=depth)
+        emit(envelope(True, "explore", result))
+        conn.close()
     elif command == "status":
         brain_dir = _get_brain_dir(args) or _get_positional_brain_dir(args)
         if brain_dir is None:
