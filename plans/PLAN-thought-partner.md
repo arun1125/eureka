@@ -2,95 +2,67 @@
 
 Supersedes PLAN-llm-wiki.md (Karpathy's ideas folded into Phase 2).
 
+**Status: COMPLETE** — All 7 phases shipped 2026-04-16/17.
+
 ## Vision
 
 Eureka shifts from "knowledge graph CRUD" to "thought partner that talks back."
 The human curates sources and asks questions. The brain maintains itself, surfaces
 tensions, and helps make decisions.
 
-## Revised Phase Order
+## Phases (all shipped)
 
-Ship value first, plumbing second.
+### Phase 0 — `eureka decide` ✓
+Structured decision support. `core/decide.py`, 6 tests.
+- Graph-aware retrieval → atom body reading → LLM structured analysis
+- For/against/tensions/unknowns/recommendation
+- Files as molecule + logs to decisions table
+- CLI: `eureka decide "question" [--context "..."] [--no-file]`
 
-### Phase 0 — `eureka decide` (THE KILLER FEATURE)
-Structured decision support using existing 600+ atoms.
-
-Pipeline:
-1. Embed the question → retrieve relevant atoms (reuse ask.py)
-2. Pull profile goals/values via get_relevant_profile()
-3. Find V-structures (tensions) near the question
-4. Read atom bodies for retrieved + tension atoms
-5. LLM call: given atoms + profile + tensions, produce structured output:
-   - **For:** arguments supporting each option
-   - **Against:** arguments against each option
-   - **Tensions:** where your existing knowledge disagrees with itself
-   - **Unknowns:** what the brain doesn't have enough atoms to judge
-   - **Recommendation:** weighted by profile goals
-6. File the decision frame back as a molecule (type: decision)
-7. Log to decisions table for outcome tracking
-
-New files:
-- `eureka/core/decide.py` — decision pipeline
-- DB migration: `decisions` table (question, result_json, molecule_slug, outcome, resolved_at, created_at)
-
-CLI: `eureka decide "Should I do X or Y?" --brain-dir <dir>`
-Flags: `--no-file` (don't save as molecule), `--context "extra context"`
-
-### Phase 1 — Karpathy wiki layer
-Foundation for self-maintaining brain.
-
-- `brain/sources/` — immutable raw inputs
+### Phase 1 — Karpathy wiki layer ✓
+Brain scaffolding. Committed to parent Agents repo.
 - `brain/SCHEMA.md` — contract for LLM maintenance
-- `brain/index.md` — maintained index, updated on every ingest (from Karpathy)
-- `brain/log.md` — append-only chronological ingest log (from Karpathy)
-- Ingest v2: multi-file pass (update existing atoms, not just create new)
-- `--dry-run` default, git auto-commit per ingest
+- `brain/index.md` — 472-atom alphabetical index
+- `brain/log.md` — append-only ingest log
+- `brain/sources/.gitkeep`
 
-### Phase 2 — `eureka lint` v1 (mechanical)
-No LLM, pure computation:
-- Orphaned atoms (zero backlinks, zero molecule membership)
-- Broken wikilinks ([[slug]] to nonexistent atoms)
-- Duplicate atoms (cosine similarity > 0.95)
-- Missing frontmatter fields
+### Phase 2 — `eureka lint` v1 (mechanical) ✓
+Pure computation, no LLM. `core/lint.py`, 6 tests.
+- Orphans, broken wikilinks, duplicates (cosine > 0.95), missing frontmatter
+- Health score 0-100, markdown report via `--report`
 
-Output: markdown report to `brain/_lint/YYYY-MM-DD.md`
+### Phase 3 — Temporal reasoning ✓
+`core/temporal.py`, 5 tests.
+- `eureka trends` — tag frequency shift between time windows
+- `eureka revisit` — old atoms near recent activity centroid
+- `staleness()` — atoms dormant beyond threshold
 
-### Phase 3 — Temporal reasoning
-- Atom staleness scores (decay over time, refreshed on citation)
-- `eureka trends` — focus shifts over time windows
-- `eureka revisit` — old atoms newly relevant to recent activity
-- Needs enough history to be useful — Phase 2 ingest builds this
+### Phase 4 — Profile-integrated scoring ✓
+Modified `core/scorer.py` + `core/ask.py`, 6 tests.
+- `profile_multiplier()` — 1.0-1.5x boost for goal-aligned atoms
+- `ask()` re-ranks top 10 → top 5 with 10% profile blend
 
-### Phase 4 — Profile-integrated scoring
-- Profile goals weight discovery scoring (scorer.py multiplier)
-- `ask` and `decide` prioritize atoms near stated goals
-- Discovery surfaces molecules aligned with current objectives
+### Phase 5 — `eureka lint --deep` (LLM-judged) ✓
+`core/lint_llm.py`, 6 tests.
+- Contradictions: cosine 0.3-0.85 pre-filter → LLM judges batches of 10
+- Stale claims: temporal regex pre-filter → LLM judges
+- Knowledge gaps: wikilinks in 3+ atoms with no dedicated atom (no LLM)
+- CLI: `eureka lint --deep [--max-pairs N]`
 
-### Phase 5 — `eureka lint` v2 (LLM-judged)
-- Contradictions: pre-filter by cosine (0.5-0.85), LLM judges ~500 pairs
-- Stale claims: atoms with dated assertions older than threshold
-- Knowledge gaps: concepts mentioned across 3+ atoms with no dedicated atom
-- Cost: ~$0.50/run with Haiku
+### Phase 6 — `eureka resolve` + `eureka patterns` ✓
+`core/resolve.py`, 8 tests.
+- `eureka resolve <slug> --outcome "..."` — records outcome, appends to molecule .md
+- Partial slug matching
+- `eureka patterns` — resolution time, recommendation-vs-outcome, pending decisions
 
-### Phase 6 — `eureka resolve` (decision outcomes)
-Closes the decide loop:
-- `eureka resolve <decision-slug> --outcome "what happened"`
-- Links outcome back to the decision molecule
-- Over time: pattern detection on decision quality
-- "You tend to overthink X-type decisions" / "Your instincts on Y are good"
+## Test Suite
+31 tests across 5 test files, all passing.
+```bash
+uv run python -m pytest tests/test_decide.py tests/test_lint.py tests/test_temporal.py tests/test_lint_llm.py tests/test_resolve.py -v
+```
 
-## Open Questions
-1. **Source backfill:** Do existing 600 atoms get retro-linked to sources?
-   Recommendation: no. Start compounding from today. Backfill is a separate project.
-2. **Atom ownership:** Existing hand-written atoms stay human-owned. LLM additions
-   are clearly tagged (source: "eureka-ingest" or "eureka-decide"). Lint never
-   auto-edits human atoms — it flags and waits.
-3. **Query file-back default:** ON for `decide`, OFF for `ask` (preserving current
-   behavior). Revisit after Phase 0 usage.
-4. **LLM model allocation:** Decide/digest = Sonnet. Lint v2 = Haiku. Ingest = Sonnet
-   for extraction, Haiku for match decisions.
-
-## Critical Path
-Phase 0 is the only thing that matters right now. It's 1 new file (decide.py),
-1 DB migration (decisions table), and ~50 lines in cli.py. Everything else is
-Phase 2+.
+## Resolved Questions
+1. **Source backfill:** No. Start compounding from today.
+2. **Atom ownership:** Human atoms stay human-owned. LLM additions tagged.
+3. **Query file-back default:** ON for `decide`, OFF for `ask`.
+4. **LLM model allocation:** Decide = Sonnet. Lint v2 = Haiku.
