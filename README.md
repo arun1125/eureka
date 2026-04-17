@@ -66,6 +66,27 @@ eureka ask "why do smart people procrastinate on important work"
 # Brain dump — think out loud, get connections + tensions + pushback
 eureka dump "I think niching down is overrated"
 
+# Structured decision support — for/against/tensions/unknowns from your knowledge
+eureka decide "Should I focus on YouTube or LinkedIn?"
+
+# Record what actually happened after a decision
+eureka resolve decision-should-i-focus-on-youtube --outcome "YouTube grew 5x faster"
+
+# Analyze your decision-making patterns over time
+eureka patterns
+
+# Brain health checks (mechanical)
+eureka lint
+
+# Deep lint — LLM finds contradictions, stale claims, knowledge gaps
+eureka lint --deep
+
+# How has your focus shifted?
+eureka trends --window 14
+
+# Old ideas newly relevant to what you're working on
+eureka revisit
+
 # Reflect — what's overrepresented, what's missing, blind spots
 eureka reflect
 
@@ -82,6 +103,9 @@ eureka serve
 - **Molecules** — new insights synthesized from 2-3 atoms that say something none of them say alone
 - **8 Discovery Methods** — missing triangles, voids, random walks, V-structures, bridges, antipodal pairs, cluster boundaries, residuals
 - **Thought Partner** — ask questions with graph-aware retrieval, brain dump raw thinking, reflect on blind spots
+- **Decision Support** — structured for/against analysis using your knowledge graph, with outcome tracking and pattern detection
+- **Brain Health** — mechanical lint (orphans, broken links, duplicates) + LLM-judged lint (contradictions, stale claims, gaps)
+- **Temporal Reasoning** — focus shift detection, old-idea resurfacing, staleness tracking
 - **Scoring** — coherence × novelty × emergence × source diversity, normalized 0-100
 
 ## How `ask` is different from RAG
@@ -96,11 +120,26 @@ RAG stays in the neighborhood. The graph crosses into territory you forgot was r
 
 ```bash
 pip install git+https://github.com/arun1125/eureka.git
+eureka --version  # verify
 ```
+
+Requires Python 3.10+. No other system dependencies.
 
 ## Setup
 
-Eureka needs an LLM for three things: extracting atoms from sources, writing molecule synthesis, and answering questions. Everything else — linking, scoring, discovery, graph analysis — is deterministic math.
+Eureka needs two things:
+1. **Gemini API key** for embeddings (free at [aistudio.google.com/apikey](https://aistudio.google.com/apikey))
+2. **An LLM** for atom extraction, molecule synthesis, and decision support. Everything else — linking, scoring, discovery, graph analysis — is deterministic math.
+
+### Quick start (3 commands)
+
+```bash
+eureka init ~/brain
+echo 'GEMINI_API_KEY=AIza...' > ~/brain/.env
+eureka setup --brain-dir ~/brain --provider claude-cli --model sonnet
+```
+
+That's it. You're ready to ingest sources.
 
 ### Interactive setup (humans)
 
@@ -118,7 +157,7 @@ eureka setup-instructions                    # Returns JSON with all options
 eureka setup --brain-dir ~/brain --provider claude-cli --model sonnet
 ```
 
-Agents should call `setup-instructions` first to get the full provider list, ask the user what they want, then run `setup` with the answer. See [AGENTS.md](AGENTS.md) for the complete agent onboarding flow.
+Agents should call `setup-instructions` first to get the full provider list, ask the user what they want, then run `setup` with the answer. See [AGENTS.md](AGENTS.md) for the complete 7-step agent onboarding flow.
 
 ### Providers
 

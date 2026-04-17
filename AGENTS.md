@@ -2,78 +2,106 @@
 
 You are operating a molecular knowledge system. Eureka turns raw sources into atomic ideas, links them by semantic similarity, and discovers synthesized insights using embedding geometry.
 
-## First-Time Setup (for agents)
+## Agent Onboarding Flow
 
-When setting up Eureka for a new user, run the setup flow **before** any other command.
+When an agent first encounters eureka, follow this exact sequence. Each step is designed to be copy-pasteable and produces JSON output for the agent to parse.
 
-### Step 1: Get setup instructions (machine-readable)
+### Step 0: Install
+
+```bash
+pip install git+https://github.com/arun1125/eureka.git
+```
+
+Verify: `eureka --version` should print the version number.
+
+### Step 1: Initialize a brain
+
+```bash
+eureka init ~/brain
+```
+
+This creates the directory structure and empty `brain.db`. Pick a location the user wants — `~/brain`, `~/second-brain`, or inside their project.
+
+### Step 2: Get Gemini API key for embeddings
+
+Eureka uses **Gemini Embedding 001** (3072-dim) for all vector operations. This is separate from the LLM provider and is required.
+
+Ask the user: **"I need a Gemini API key for embeddings. You can get one free at https://aistudio.google.com/apikey. Do you have one?"**
+
+Write it to the brain's `.env` file:
+```bash
+echo 'GEMINI_API_KEY=AIza...' > ~/brain/.env
+```
+
+### Step 3: Choose an LLM provider
+
+Call `eureka setup-instructions` to get the full provider list as JSON, then present the user with choices:
 
 ```bash
 eureka setup-instructions
 ```
 
-This returns a JSON object describing every provider option with cost, requirements, and the exact CLI command to run. Use this to present choices to the user.
+The simplest question to ask: **"Do you want eureka to use your Claude Code subscription (no extra cost), or a separate API key?"**
 
-### Step 2: Ask the user
+| Provider | `--provider` | Needs key? | Cost | Best for |
+|----------|-------------|------------|------|----------|
+| Claude Code subscription | `claude-cli` | No | Included | Claude Max/Pro users |
+| Ollama | `ollama` | No | Free | Privacy-first, local models |
+| Gemini CLI | `gemini` | No | Free tier | Already have `gemini` CLI |
+| Claude API | `claude` | Yes | Pay-per-token | High quality, separate billing |
+| OpenAI | `openai` | Yes | Pay-per-token | GPT-4o users |
+| Groq | `groq` | Yes | Free tier | Fast inference |
+| DeepSeek | `deepseek` | Yes | Cheap | Budget-conscious |
+| OpenRouter | `openrouter` | Yes | Varies | Model variety |
 
-The user needs to choose one LLM backend:
-
-| Option | What it uses | Needs API key? | Cost |
-|--------|-------------|----------------|------|
-| `claude-cli` | Claude Code / Max / Pro subscription via `claude -p` | No | Included in subscription |
-| `claude` | Anthropic API direct | Yes (`ANTHROPIC_API_KEY`) | Pay-per-token |
-| `openai` | OpenAI API (GPT-4o, etc.) | Yes (`OPENAI_API_KEY`) | Pay-per-token |
-| `gemini` | Gemini CLI on PATH | No | Free tier available |
-| `ollama` | Local models via Ollama | No | Free (local hardware) |
-| `openrouter` | 200+ models via openrouter.ai | Yes (`OPENROUTER_API_KEY`) | Pay-per-token |
-| `together` | Together AI | Yes (`TOGETHER_API_KEY`) | Pay-per-token |
-| `groq` | Groq (ultra-fast) | Yes (`GROQ_API_KEY`) | Free tier + pay |
-| `deepseek` | DeepSeek | Yes (`DEEPSEEK_API_KEY`) | Pay-per-token (cheap) |
-| `openai-compatible` | Any OpenAI-compatible endpoint | Varies | Varies |
-
-Ask: **"Do you want Eureka to use your Claude Code subscription (no extra cost), or API tokens from a provider like OpenAI, Anthropic, Groq, etc.?"**
-
-### Step 3: Configure (non-interactive, for agents)
+### Step 4: Configure
 
 ```bash
-# Subscription user (Claude Max/Pro — no key needed)
+# Claude Code subscriber (most common — zero config)
 eureka setup --brain-dir ~/brain --provider claude-cli --model sonnet
 
-# API user (Anthropic)
-eureka setup --brain-dir ~/brain --provider claude --api-key sk-ant-xxx
-
-# OpenAI
-eureka setup --brain-dir ~/brain --provider openai --model gpt-4o-mini --api-key sk-xxx
-
-# Gemini CLI
-eureka setup --brain-dir ~/brain --provider gemini
-
-# Ollama (local, no key)
+# Ollama (free, local)
 eureka setup --brain-dir ~/brain --provider ollama --model llama3.1
 
-# Groq
-eureka setup --brain-dir ~/brain --provider groq --api-key gsk_xxx
-
-# OpenRouter
-eureka setup --brain-dir ~/brain --provider openrouter --model anthropic/claude-haiku --api-key sk-or-xxx
+# OpenAI API
+eureka setup --brain-dir ~/brain --provider openai --model gpt-4o-mini --api-key sk-xxx
 
 # Any OpenAI-compatible endpoint
-eureka setup --brain-dir ~/brain --provider openai-compatible --base-url https://api.example.com/v1 --model model-name --api-key xxx
+eureka setup --brain-dir ~/brain --provider openai-compatible \
+  --base-url https://api.example.com/v1 --model model-name --api-key xxx
 ```
 
-This writes `brain.json` and optionally `.env`, then tests the connection.
+This writes `brain.json` and tests the connection. If the test fails, the error tells you what's wrong.
 
-### Step 3 (alt): Interactive setup (for humans)
+### Step 5: First ingest
 
 ```bash
-eureka setup --brain-dir ~/brain
+eureka ingest ~/Downloads/some-book.pdf --brain-dir ~/brain
 ```
 
-Walks through provider → model → API key → connection test interactively.
+After ingest, run `eureka status --brain-dir ~/brain` to verify atoms were created and embeddings are at 100%.
 
-### Embedding note
+### Step 6: Verify it works
 
-Separately from LLM, Eureka uses **Gemini Embedding 001** (3072-dim) for vectors. Set `GEMINI_API_KEY` in your brain directory's `.env` file. This is independent of the LLM provider choice.
+```bash
+# Ask a question — should return nearest atoms, graph neighbors, tensions
+eureka ask "what is the main idea?" --brain-dir ~/brain
+
+# Check brain stats
+eureka status --brain-dir ~/brain
+```
+
+If both return valid JSON with `"ok": true`, setup is complete. Set `EUREKA_BRAIN=~/brain` in the user's shell profile for convenience.
+
+### Step 7 (optional): Profile
+
+```bash
+# Get onboarding questions
+eureka profile --brain-dir ~/brain
+
+# Submit answers — improves search relevance
+eureka profile --brain-dir ~/brain --answers '{"goals": "build a YouTube channel", "interests": "AI, philosophy"}'
+```
 
 ---
 
@@ -89,6 +117,13 @@ eureka ingest <source> --brain-dir DIR  # Add knowledge
 eureka status                           # Check brain health
 eureka discover                         # Find & write new molecules
 eureka ask "question"                   # Query the brain
+eureka decide "question"                # Structured decision support
+eureka resolve <slug> --outcome "..."   # Record decision outcomes
+eureka patterns                         # Analyze decision quality
+eureka lint                             # Brain health checks
+eureka lint --deep                      # LLM-judged contradictions/gaps
+eureka trends                           # Focus shifts over time
+eureka revisit                          # Old atoms newly relevant
 eureka review <slug> yes|no             # Accept or reject insights
 eureka serve                            # Visual dashboard
 ```
@@ -123,8 +158,8 @@ Exit codes: 0=success, 1=failure, 2=usage error, 3=not found, 5=conflict.
 | `MOONSHOT_API_KEY` | Kimi K2.5 fallback |
 | _(none)_ | Falls back to `gemini` CLI on PATH |
 
-LLM needed: `discover`, `ask`, `dump`, `profile --answers`.
-No LLM: `init`, `ingest`, `status`, `serve`, `reflect`, `review`.
+LLM needed: `discover`, `ask`, `dump`, `decide`, `lint --deep`, `profile --answers`.
+No LLM: `init`, `ingest`, `status`, `serve`, `reflect`, `review`, `lint`, `trends`, `revisit`, `resolve`, `patterns`.
 
 ## Commands
 
@@ -225,6 +260,61 @@ Process a raw text dump — extract atoms via LLM and add to brain.
 ### eureka profile [--answers "text"]
 
 Without `--answers`: returns onboarding questions. With `--answers`: processes answers into profile atoms.
+
+### eureka decide "question" [--context "extra info"] [--no-file]
+
+Structured decision support. Retrieves relevant atoms via graph-aware search, reads their bodies, sends to LLM for structured analysis. Returns:
+- `for_arguments` — reasons in favor
+- `against_arguments` — reasons against
+- `tensions` — key tradeoffs in your knowledge
+- `unknowns` — what the brain can't answer
+- `recommendation` — weighted by profile goals
+- `atoms_consulted` — which atoms informed the decision
+
+By default files the decision as a molecule and logs it for outcome tracking. Use `--no-file` to skip.
+
+### eureka resolve \<slug\> --outcome "what happened"
+
+Record the outcome of a decision. Updates the DB and appends `## Outcome` to the molecule markdown. Supports partial slug matching (e.g. `move-to-bangkok` matches `decision-should-i-move-to-bangkok`).
+
+### eureka patterns
+
+Analyze decision-making patterns from resolved decisions. Shows:
+- Total resolved vs unresolved decisions
+- Average resolution time (days)
+- Recommendation vs outcome alignment
+- Pending decisions with age
+
+Needs at least 1 resolved decision. Value grows over time.
+
+### eureka lint [--report] [--deep] [--max-pairs N]
+
+Brain health checks. Without `--deep`: pure computation (no LLM).
+- **Orphans** — atoms with no inbound edges and no molecule membership
+- **Broken links** — `[[wikilinks]]` pointing to non-existent atoms
+- **Duplicates** — atom pairs with cosine > 0.95
+- **Missing frontmatter** — atoms without type, tags, or date fields
+- **Health score** — 0-100 composite metric
+
+With `--deep`: adds LLM-judged checks:
+- **Contradictions** — pre-filters pairs by cosine (0.3-0.85), LLM judges logical conflicts
+- **Stale claims** — atoms with dates/numbers/temporal language, LLM judges if outdated
+- **Knowledge gaps** — concepts `[[wikilinked]]` in 3+ atoms with no dedicated atom
+
+`--report` writes a markdown report to `brain/_lint/YYYY-MM-DD.md`.
+
+### eureka trends [--window N] [--compare N]
+
+Compare tag frequency between two time windows (default 30 days each). Shows:
+- Rising/falling tags
+- New/disappeared tags
+- Activity type shifts (ask, decide, etc.)
+
+Needs atoms with varied `created_at` dates to be meaningful.
+
+### eureka revisit [--count N]
+
+Surface old atoms (30+ days) that are semantically close to your recent activity (last 14 days). Computes centroid of recent activity embeddings and finds distant atoms nearest to it.
 
 ### eureka reflect
 
@@ -362,10 +452,15 @@ No hard-delete command. Workflow:
 ### Routine Checklist
 
 1. `status` — verify counts
-2. `reflect` — check blind spots
-3. Review unreviewed molecules
-4. Backup before new ingests
-5. `discover --count 20` after each ingest
+2. `lint` — orphans, broken links, duplicates
+3. `lint --deep` — contradictions, stale claims, gaps (weekly, costs ~$0.50)
+4. `reflect` — check blind spots
+5. `trends` — is focus shifting?
+6. `revisit` — old atoms worth re-reading?
+7. Review unreviewed molecules
+8. `patterns` — how are past decisions holding up?
+9. Backup before new ingests
+10. `discover --count 20` after each ingest
 
 ## Error Handling
 
@@ -380,14 +475,27 @@ Read the suggestion before retrying.
 ## Typical Workflow
 
 ```bash
-export GEMINI_API_KEY=...
-export ANTHROPIC_API_KEY=sk-ant-...
-
+# One-time setup (see Agent Onboarding Flow above for details)
 eureka init ~/brain
-eureka ingest ~/Books/book.pdf --brain-dir ~/brain
-eureka ingest arxiv:1706.03762 --brain-dir ~/brain --paper
-eureka discover ~/brain --count 20
-eureka serve ~/brain                    # review in browser
-eureka ask "How do habits form?" --brain-dir ~/brain
-eureka status ~/brain
+echo 'GEMINI_API_KEY=AIza...' > ~/brain/.env
+eureka setup --brain-dir ~/brain --provider claude-cli --model sonnet
+export EUREKA_BRAIN=~/brain
+
+# Build the brain
+eureka ingest ~/Books/book.pdf
+eureka ingest arxiv:1706.03762 --paper
+eureka discover --count 20
+eureka serve                            # review in browser
+
+# Thought partner
+eureka ask "How do habits form?"
+eureka decide "Should I focus on YouTube or LinkedIn?"
+eureka resolve decision-should-i-focus --outcome "YouTube grew faster"
+eureka patterns
+
+# Maintenance
+eureka lint --deep
+eureka trends
+eureka revisit
+eureka status
 ```
