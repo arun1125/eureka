@@ -183,10 +183,13 @@ COMMAND_HELP = {
         "Run brain health checks (no LLM needed).\n\n"
         "Options:\n"
         "  --brain-dir <dir>   Brain directory (or set EUREKA_BRAIN)\n"
-        "  --report            Write markdown report to brain/_lint/\n\n"
+        "  --report            Write markdown report to brain/_lint/\n"
+        "  --deep              LLM-judged checks (contradictions, stale claims, gaps)\n"
+        "  --max-pairs <N>     Max pairs for contradiction check (default: 50)\n\n"
         "Examples:\n"
         "  eureka lint --brain-dir ~/mybrain\n"
         "  eureka lint --brain-dir ~/mybrain --report\n"
+        "  eureka lint --brain-dir ~/mybrain --deep\n"
     ),
     "trends": (
         "Usage: eureka trends [options]\n\n"
@@ -208,6 +211,23 @@ COMMAND_HELP = {
         "Examples:\n"
         "  eureka revisit --brain-dir ~/mybrain\n"
         "  eureka revisit --brain-dir ~/mybrain --count 5\n"
+    ),
+    "resolve": (
+        "Usage: eureka resolve <slug> --outcome <text> [options]\n\n"
+        "Record the outcome of a decision made with `eureka decide`.\n\n"
+        "Options:\n"
+        "  --brain-dir <dir>   Brain directory (or set EUREKA_BRAIN)\n"
+        "  --outcome <text>    What actually happened\n\n"
+        "Examples:\n"
+        "  eureka resolve decision-should-i-move --outcome \"Moved to Bangkok, best decision ever\" --brain-dir ~/mybrain\n"
+    ),
+    "patterns": (
+        "Usage: eureka patterns [options]\n\n"
+        "Analyze decision-making patterns from resolved decisions.\n\n"
+        "Options:\n"
+        "  --brain-dir <dir>   Brain directory (or set EUREKA_BRAIN)\n\n"
+        "Examples:\n"
+        "  eureka patterns --brain-dir ~/mybrain\n"
     ),
 }
 
@@ -238,7 +258,7 @@ def _get_brain_dir(args):
 def _get_positional_brain_dir(args):
     """Find positional brain_dir arg, skipping flags and their values."""
     skip_next = False
-    flags_with_values = {"--count", "--port", "--brain-dir", "--provider", "--model", "--api-key", "--base-url", "--method", "--title", "--context", "--window", "--compare"}
+    flags_with_values = {"--count", "--port", "--brain-dir", "--provider", "--model", "--api-key", "--base-url", "--method", "--title", "--context", "--window", "--compare", "--outcome", "--max-pairs"}
     for i, arg in enumerate(args[1:], 1):  # skip command name
         if skip_next:
             skip_next = False
@@ -298,6 +318,8 @@ def main():
             "  explore <slug> [--depth N]  BFS neighborhood analysis from an atom\n"
             "  trends [--window N]     Show how your focus has shifted over time\n"
             "  revisit [--count N]     Surface old atoms newly relevant to recent activity\n"
+            "  resolve <slug>          Record decision outcome (closes the decide loop)\n"
+            "  patterns                Analyze decision-making patterns over time\n"
             "  serve [--port N]        Start visual dashboard\n\n"
             "Options:\n"
             "  --brain-dir <dir>       Brain directory (or set EUREKA_BRAIN)\n"
@@ -621,6 +643,27 @@ def main():
             dim = len(r["vector"]) // 4
             embeddings[r["slug"]] = list(struct.unpack(f"{dim}f", r["vector"]))
         result = lint(conn, Path(brain_dir), embeddings=embeddings)
+        if "--deep" in args:
+            from eureka.core.lint_llm import lint_deep
+            from eureka.core.llm import get_llm, load_llm_config
+            try:
+                llm = get_llm(config=load_llm_config(brain_dir))
+            except RuntimeError as e:
+                emit(envelope(False, "lint", {"message": str(e)}))
+                sys.exit(1)
+            if llm is None:
+                emit(envelope(False, "lint", {"message": "No LLM found. Install Claude Code or run `eureka setup`."}))
+                sys.exit(1)
+            max_pairs = 50
+            if "--max-pairs" in args:
+                mpidx = args.index("--max-pairs")
+                if mpidx + 1 < len(args):
+                    try:
+                        max_pairs = int(args[mpidx + 1])
+                    except ValueError:
+                        pass
+            deep_result = lint_deep(conn, Path(brain_dir), llm, max_pairs=max_pairs)
+            result["deep"] = deep_result
         if "--report" in args:
             report_path = write_report(result, Path(brain_dir))
             result["report_path"] = str(report_path)
@@ -748,6 +791,47 @@ def main():
                     sys.exit(1)
         result = revisit(conn, embeddings, Path(brain_dir), max_results=count)
         emit(envelope(True, "revisit", result))
+        conn.close()
+    elif command == "resolve":
+        if len(args) < 2:
+            emit(envelope(False, "resolve", {
+                "message": "Missing slug argument.",
+                "usage": "eureka resolve <slug> --outcome <text> --brain-dir <dir>",
+            }))
+            sys.exit(1)
+        slug = args[1]
+        brain_dir = _get_brain_dir(args)
+        if brain_dir is None:
+            _brain_dir_error("resolve", "eureka resolve <slug> --outcome <text> --brain-dir <dir>")
+        outcome = None
+        if "--outcome" in args:
+            oidx = args.index("--outcome")
+            outcome = args[oidx + 1] if oidx + 1 < len(args) else None
+        if not outcome:
+            emit(envelope(False, "resolve", {
+                "message": "Missing --outcome flag.",
+                "usage": "eureka resolve <slug> --outcome \"what happened\" --brain-dir <dir>",
+            }))
+            sys.exit(1)
+        from eureka.core.db import open_db
+        from eureka.core.resolve import resolve
+        from pathlib import Path
+        conn = open_db(brain_dir)
+        result = resolve(conn, slug, outcome, brain_dir=Path(brain_dir))
+        if "error" in result:
+            emit(envelope(False, "resolve", result))
+            sys.exit(1)
+        emit(envelope(True, "resolve", result))
+        conn.close()
+    elif command == "patterns":
+        brain_dir = _get_brain_dir(args)
+        if brain_dir is None:
+            _brain_dir_error("patterns", "eureka patterns --brain-dir <dir>")
+        from eureka.core.db import open_db
+        from eureka.core.resolve import patterns
+        conn = open_db(brain_dir)
+        result = patterns(conn)
+        emit(envelope(True, "patterns", result))
         conn.close()
     elif command == "status":
         brain_dir = _get_brain_dir(args) or _get_positional_brain_dir(args)
