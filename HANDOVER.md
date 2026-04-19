@@ -27,7 +27,7 @@ Plus 1 commit to the parent Agents repo (Phase 1):
 
 ### `eureka decide` (most important — the whole point)
 ```bash
-eureka decide "Should I focus on YouTube or LinkedIn for the next 3 months?" --brain-dir ~/Desktop/00_Organized/Agents/brain
+eureka decide "Should I focus on YouTube or LinkedIn for the next 3 months?" --brain-dir ~/brain
 ```
 - Does it pull relevant atoms? (check `atoms_consulted` in output)
 - Does the for/against/tensions/unknowns structure make sense?
@@ -37,8 +37,8 @@ eureka decide "Should I focus on YouTube or LinkedIn for the next 3 months?" --b
 
 ### `eureka lint`
 ```bash
-eureka lint --brain-dir ~/Desktop/00_Organized/Agents/brain
-eureka lint --brain-dir ~/Desktop/00_Organized/Agents/brain --report
+eureka lint --brain-dir ~/brain
+eureka lint --brain-dir ~/brain --report
 ```
 - How many orphans/broken links/duplicates does the real brain have?
 - Does `--report` create `brain/_lint/2026-04-17.md`?
@@ -46,8 +46,8 @@ eureka lint --brain-dir ~/Desktop/00_Organized/Agents/brain --report
 
 ### `eureka lint --deep` (NEW — Phase 5)
 ```bash
-eureka lint --brain-dir ~/Desktop/00_Organized/Agents/brain --deep
-eureka lint --brain-dir ~/Desktop/00_Organized/Agents/brain --deep --max-pairs 20
+eureka lint --brain-dir ~/brain --deep
+eureka lint --brain-dir ~/brain --deep --max-pairs 20
 ```
 - Does it find contradictions between atoms? (pre-filters cosine 0.3-0.85, then LLM judges)
 - Does it flag stale claims? (atoms with dates, percentages, "currently" language)
@@ -57,10 +57,10 @@ eureka lint --brain-dir ~/Desktop/00_Organized/Agents/brain --deep --max-pairs 2
 ### `eureka resolve` (NEW — Phase 6)
 ```bash
 # First, make a decision
-eureka decide "Should I focus on YouTube?" --brain-dir ~/Desktop/00_Organized/Agents/brain
+eureka decide "Should I focus on YouTube?" --brain-dir ~/brain
 
 # Later, record what happened
-eureka resolve decision-should-i-focus-on-youtube --outcome "Focused on YouTube for 2 months, grew from 200 to 1.2k subs" --brain-dir ~/Desktop/00_Organized/Agents/brain
+eureka resolve decision-should-i-focus-on-youtube --outcome "Focused on YouTube for 2 months, grew from 200 to 1.2k subs" --brain-dir ~/brain
 ```
 - Does it update the decision in the DB?
 - Does it append an `## Outcome` section to the molecule .md file?
@@ -68,7 +68,7 @@ eureka resolve decision-should-i-focus-on-youtube --outcome "Focused on YouTube 
 
 ### `eureka patterns` (NEW — Phase 6)
 ```bash
-eureka patterns --brain-dir ~/Desktop/00_Organized/Agents/brain
+eureka patterns --brain-dir ~/brain
 ```
 - Shows resolved vs unresolved decision counts
 - Average resolution time
@@ -77,15 +77,15 @@ eureka patterns --brain-dir ~/Desktop/00_Organized/Agents/brain
 
 ### `eureka trends`
 ```bash
-eureka trends --brain-dir ~/Desktop/00_Organized/Agents/brain
-eureka trends --brain-dir ~/Desktop/00_Organized/Agents/brain --window 14
+eureka trends --brain-dir ~/brain
+eureka trends --brain-dir ~/brain --window 14
 ```
 - Does it show meaningful focus shifts? (needs atoms with varied created_at dates)
 - If all atoms have the same date, it'll be empty — that's expected
 
 ### `eureka revisit`
 ```bash
-eureka revisit --brain-dir ~/Desktop/00_Organized/Agents/brain
+eureka revisit --brain-dir ~/brain
 ```
 - Does it surface old atoms relevant to recent activity?
 - Needs activity log entries to work — if you haven't been using `eureka ask` much, it'll be empty
