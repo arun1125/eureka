@@ -53,11 +53,13 @@ def run_ingest(source: str, brain_dir_path: str, deep: bool = False,
 
     # Read source
     reader = detect_reader(source)
+
     result = reader.read(source)
     title = title_override or result["title"]
     source_type = result["type"]
     chunks = result["chunks"]
     raw_text = "\n\n".join(chunks)
+    source_metadata = result.get("metadata", {})
 
     # If title is just a filename and no override, try LLM naming
     if not title_override and title == Path(source).stem and not is_url and not is_arxiv:
@@ -120,7 +122,8 @@ def run_ingest(source: str, brain_dir_path: str, deep: bool = False,
             existing_tags = sorted(set(existing_tags))
 
         try:
-            atoms = extract_atoms(chunks, existing_tags, llm, source_type=source_type)
+            atoms = extract_atoms(chunks, existing_tags, llm, source_type=source_type,
+                                  source_metadata={"title": title, **source_metadata})
         except RuntimeError as e:
             # LLM failed — delete the source row so re-ingest is possible
             conn = open_db(brain_dir / "brain.db")
@@ -240,7 +243,8 @@ def run_ingest(source: str, brain_dir_path: str, deep: bool = False,
                 deep_failed += 1
         deep_info = {"deep_fetched": deep_fetched, "deep_skipped": deep_skipped, "deep_failed": deep_failed}
 
-    emit(envelope(True, "ingest", {
+    # Build output
+    ingest_output = {
         "source": {
             "id": source_id,
             "title": title,
@@ -252,4 +256,6 @@ def run_ingest(source: str, brain_dir_path: str, deep: bool = False,
         **stubs_info,
         "enrichment": enrich_info,
         **deep_info,
-    }))
+    }
+
+    emit(envelope(True, "ingest", ingest_output))

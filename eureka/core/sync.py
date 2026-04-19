@@ -26,7 +26,7 @@ def scan_files(brain_dir: Path) -> dict:
 
     atom_files = []
     if atoms_dir.is_dir():
-        atom_files.extend(atoms_dir.glob("*.md"))
+        atom_files.extend(atoms_dir.rglob("*.md"))
     # Also scan root-level .md (SecondBrainKit layout)
     atom_files.extend(
         md for md in brain_dir.glob("*.md")

@@ -691,6 +691,140 @@ def discover_from_atom(conn, embeddings, start_slug: str, method: str, cap: int 
     return results
 
 
+# --- Method 10: BFS (explore neighborhood from a starting atom) ---
+
+def bfs_explore(conn, embeddings, start_slug: str, depth: int = 2, cap: int = 50):
+    """BFS from a starting atom through the edge graph.
+
+    Returns layers, convergence analysis, internal density, and triangles.
+    Useful for understanding the structural neighborhood of an atom.
+
+    Args:
+        start_slug: Atom slug to start from.
+        depth: Number of BFS layers to traverse (default 2).
+        cap: Max atoms per layer (default 50).
+
+    Returns:
+        dict with layers, convergence, internal_density, triangles, and stats.
+    """
+    from collections import Counter
+
+    # Build adjacency from edges table
+    adj = defaultdict(set)
+    edge_weights = {}
+    for row in conn.execute("SELECT source, target, similarity FROM edges"):
+        s, t = row["source"], row["target"]
+        sim = row["similarity"] or 0.0
+        adj[s].add(t)
+        adj[t].add(s)
+        edge_weights[(s, t)] = sim
+        edge_weights[(t, s)] = sim
+
+    if start_slug not in adj and start_slug not in embeddings:
+        return {"error": f"Atom '{start_slug}' not found in graph"}
+
+    # --- BFS traversal ---
+    visited = {start_slug}
+    layers = {0: [start_slug]}
+    current_frontier = {start_slug}
+
+    for d in range(1, depth + 1):
+        next_frontier = set()
+        for node in current_frontier:
+            for neighbor in adj.get(node, set()):
+                if neighbor not in visited:
+                    next_frontier.add(neighbor)
+                    visited.add(neighbor)
+        # Cap per layer — keep highest-similarity neighbors
+        if len(next_frontier) > cap:
+            # Rank by max similarity to any node in previous layer
+            scored = []
+            for n in next_frontier:
+                max_sim = max(
+                    (edge_weights.get((n, p), 0.0) for p in current_frontier if (n, p) in edge_weights),
+                    default=0.0,
+                )
+                scored.append((n, max_sim))
+            scored.sort(key=lambda x: x[1], reverse=True)
+            next_frontier = {s for s, _ in scored[:cap]}
+
+        layers[d] = sorted(next_frontier)
+        current_frontier = next_frontier
+
+    # --- Direct neighbors (layer 0 links) ---
+    layer0_links = set(layers.get(1, []))
+
+    # --- Collect links FROM each layer-1 atom ---
+    layer1_neighbors = {}  # layer1_atom -> set of its neighbors
+    for atom in layer0_links:
+        layer1_neighbors[atom] = adj.get(atom, set()) - {start_slug}
+
+    # --- Internal density: which layer-1 atoms are most linked BY other layer-1 atoms ---
+    internal_count = Counter()
+    for atom, neighbors in layer1_neighbors.items():
+        for n in neighbors:
+            if n in layer0_links and n != atom:
+                internal_count[n] += 1
+
+    # --- Convergence: layer-2 atoms reached from MULTIPLE layer-1 atoms ---
+    convergence = Counter()
+    convergence_sources = defaultdict(list)
+    layer2_atoms = set(layers.get(2, []))
+    for l1_atom, neighbors in layer1_neighbors.items():
+        for n in neighbors:
+            if n in layer2_atoms:
+                convergence[n] += 1
+                convergence_sources[n].append(l1_atom)
+
+    # --- Triangles: A in layer1, B in layer1, C is shared neighbor ---
+    triangles = []
+    seen_tris = set()
+    l1_list = list(layer0_links)
+    for i, a in enumerate(l1_list):
+        a_neighbors = layer1_neighbors.get(a, set())
+        for b in l1_list[i + 1:]:
+            if b not in a_neighbors:
+                continue
+            b_neighbors = layer1_neighbors.get(b, set())
+            shared = a_neighbors & b_neighbors - {a, b, start_slug}
+            for c in shared:
+                tri_key = tuple(sorted([a, b, c]))
+                if tri_key not in seen_tris:
+                    seen_tris.add(tri_key)
+                    # Mark if c is a "discovered" node (layer 2, not layer 1)
+                    triangles.append({
+                        "atoms": list(tri_key),
+                        "discovered": c not in layer0_links,
+                    })
+
+    # --- Build result ---
+    result = {
+        "start": start_slug,
+        "depth": depth,
+        "layers": {str(d): atoms for d, atoms in layers.items()},
+        "stats": {
+            "layer_sizes": {str(d): len(atoms) for d, atoms in layers.items()},
+            "total_visited": len(visited),
+            "triangle_count": len(triangles),
+        },
+        "internal_density": [
+            {"atom": atom, "count": count}
+            for atom, count in internal_count.most_common(15)
+        ],
+        "convergence": [
+            {
+                "atom": atom,
+                "count": count,
+                "reached_from": convergence_sources[atom][:5],
+            }
+            for atom, count in convergence.most_common(25)
+            if count >= 2
+        ],
+        "triangles": triangles[:30],
+    }
+    return result
+
+
 # --- Orchestrator ---
 
 METHODS = {

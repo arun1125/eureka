@@ -510,6 +510,8 @@ def create_app(brain_dir: str) -> dict:
                     import re
                     from eureka.core.llm import get_llm
                     from datetime import datetime, timezone
+                    import struct
+                    from eureka.core.scorer import score_candidate
 
                     from eureka.core.llm import load_llm_config
                     llm = get_llm(config=load_llm_config(brain_dir))
@@ -576,11 +578,23 @@ def create_app(brain_dir: str) -> dict:
                     slug = re.sub(r"[^a-z0-9\s-]", "", slug)
                     slug = re.sub(r"[\s]+", "-", slug)[:80].strip("-")
 
+                    # Score the molecule
+                    try:
+                        rows = conn.execute("SELECT slug, vector FROM embeddings").fetchall()
+                        all_emb = {}
+                        for r in rows:
+                            dim = len(r["vector"]) // 4
+                            all_emb[r["slug"]] = list(struct.unpack(f"{dim}f", r["vector"]))
+                        candidate_emb = {s: all_emb[s] for s in atom_slugs if s in all_emb}
+                        mol_score = score_candidate(atom_slugs, candidate_emb, all_emb)
+                    except Exception:
+                        mol_score = 0
+
                     now = datetime.now(timezone.utc).isoformat()
                     conn.execute(
                         "INSERT OR REPLACE INTO molecules (slug, title, method, score, review_status, eli5, body, created_at) "
-                        "VALUES (?, ?, 'manual', 0, 'pending', ?, ?, ?)",
-                        (slug, title, eli5, mol_body, now),
+                        "VALUES (?, ?, 'manual', ?, 'pending', ?, ?, ?)",
+                        (slug, title, mol_score, eli5, mol_body, now),
                     )
                     for atom_slug in atom_slugs:
                         conn.execute(
